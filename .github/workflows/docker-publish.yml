@@ -53,3 +53,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: 将镜像包设为公开（便于 1Panel / fnOS 免登录拉取）
+        run: |
+          gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/packages/container/fcj/visibility" \
+            -f visibility=public || echo "可见性设置失败，请到包设置页手动改为 Public"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
