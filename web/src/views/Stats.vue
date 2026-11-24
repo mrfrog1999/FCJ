@@ -60,14 +60,14 @@ const currentItems = computed(() => chartsByTab[activeTab.value] || [])
 function openChart(key) {
   lastOpened.value = key
   localStorage.setItem('ssj_stats_last', key)
-  router.push({ name: 'stats-chart', query: { key } })
+  router.push({ name: 'stats', query: { key } })
 }
 </script>
 
 <style scoped>
-.stats-home { background: #f5f6f8; min-height: 100vh; padding-bottom: 90px; }
+.stats-home { background: #f5f6f8; min-height: 100vh; min-height: 100dvh; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 
-.top-bar { background: var(--primary-grad); padding: 20px 20px 24px; color: #fff; }
+.top-bar { background: var(--primary-grad); padding: calc(20px + env(safe-area-inset-top)) 20px 24px; color: #fff; }
 .top-title { display: flex; align-items: center; gap: 8px; font-size: 21px; font-weight: 800; letter-spacing: .5px; }
 .top-title .van-icon { font-size: 20px; }
 .top-sub { font-size: 12px; opacity: .88; margin-top: 6px; }

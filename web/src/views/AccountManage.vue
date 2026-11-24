@@ -44,7 +44,7 @@
         <div class="preset-colors">
           <span v-for="c in PRESET_COLORS" :key="c" class="preset-dot" :class="{ sel: form.avatar === c }" :style="{ background: c }" @click="form.avatar = c"></span>
         </div>
-        <van-field v-model="form.username" label="账号" placeholder="登录账号（至少2位）" :disabled="!!editing" />
+        <van-field v-model="form.username" label="账号" placeholder="登录账号（至少2位）" />
         <van-field v-model="form.nickname" label="昵称" placeholder="显示名称" />
         <van-field v-model="form.password" type="password" :label="editing ? '新密码' : '密码'" :placeholder="editing ? '不填则不修改' : '至少6位'" />
         <div class="bind-field" @click="bindPickerFor = 'edit'; bindShow = true">
@@ -168,14 +168,16 @@ async function onFile(e) {
 }
 async function save() {
   const f = form.value
-  if (!editing.value && !f.username.trim()) return showToast('请输入账号')
+  if (!f.username.trim()) return showToast('请输入账号')
+  if (String(f.username).trim().length < 2) return showToast('账号至少2位')
   if (!editing.value && String(f.password).length < 6) return showToast('密码至少6位')
   if (editing.value && f.password && String(f.password).length < 6) return showToast('密码至少6位')
   try {
-    const payload = { nickname: f.nickname, avatar: f.avatar || null, bind_member_id: f.bind_member_id }
+    const payload = { username: f.username.trim(), nickname: f.nickname, avatar: f.avatar || null, bind_member_id: f.bind_member_id }
     if (editing.value) {
-      await api.admin.updateUser(editing.value.id, { ...payload, password: f.password || undefined })
-      if (editing.value.id === store.user?.id) store.updateUser({ bind_member_id: f.bind_member_id })
+      const res = await api.admin.updateUser(editing.value.id, { ...payload, password: f.password || undefined })
+      // 改的是当前登录账号 → 同步本地缓存（登录名/管理员标识）
+      if (editing.value.id === store.user?.id) store.updateUser({ username: res?.username || f.username.trim(), bind_member_id: f.bind_member_id })
       showToast('已保存')
     } else {
       await api.admin.createUser({ username: f.username.trim(), nickname: f.nickname, password: f.password, avatar: f.avatar || null, bind_member_id: f.bind_member_id })
@@ -197,7 +199,7 @@ onMounted(load)
 </script>
 
 <style scoped>
-.account-page { padding-bottom: 20px; }
+.account-page { padding-bottom: calc(20px + env(safe-area-inset-bottom)); min-height: 100vh; min-height: 100dvh; }
 .tip-bar { font-size: 12px; color: #666; background: #fff7f3; margin: 12px 16px; padding: 10px 12px; border-radius: 10px; line-height: 1.6; }
 .add-bar { margin: 12px 16px; }
 .u-title { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; }

@@ -76,6 +76,7 @@
     <van-popup v-model:show="typePanelShow" position="bottom" round :style="{ height: '78%' }">
       <div class="type-panel">
         <div class="tp-head">
+          <span class="tp-hub" @click="goHub"><van-icon name="cluster-o" /> 统计中心</span>
           <span>切换图表</span>
           <van-icon name="close" @click="typePanelShow = false" />
         </div>
@@ -390,10 +391,17 @@ function chooseChart(key) {
   typePanelShow.value = false
   if (key === chartKey.value) return
   selectedName.value = ''
-  router.replace({ name: 'stats-chart', query: { key } })
+  router.replace({ name: 'stats', query: { key } })
+}
+function goHub() {
+  typePanelShow.value = false
+  router.push({ name: 'stats-hub' })
 }
 watch(() => route.query.key, k => {
-  if (k && defs[k]) { chartKey.value = k; panelTab.value = def.value.tab; selectedName.value = ''; load() }
+  chartKey.value = (k && defs[k]) ? k : 'expense_category'
+  panelTab.value = def.value.tab
+  selectedName.value = ''
+  load()
 })
 
 function openPick(type) {
@@ -436,7 +444,7 @@ onUnmounted(() => { window.removeEventListener('resize', onResize); chart?.dispo
 </script>
 
 <style scoped>
-.chart-page { background: #f5f6f8; min-height: 100vh; padding-bottom: 90px; }
+.chart-page { background: #f5f6f8; min-height: 100vh; min-height: 100dvh; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
 :deep(.van-nav-bar) { background: #fff; }
 
 .chart-switch { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 10px auto 0; padding: 6px 16px; width: fit-content; background: #fff; border-radius: 18px; font-size: 13px; font-weight: 600; color: var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,.05); }
@@ -463,7 +471,7 @@ onUnmounted(() => { window.removeEventListener('resize', onResize); chart?.dispo
 .bl-amt { color: #333; font-weight: 600; }
 .bl-pct { color: #aaa; width: 48px; text-align: right; }
 
-.bottom-toolbar { position: fixed; left: 12px; right: 12px; bottom: calc(82px + env(safe-area-inset-bottom)); height: 46px; background: #fff; border-radius: 23px; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px; box-shadow: 0 4px 18px rgba(0,0,0,.1); z-index: 20; }
+.bottom-toolbar { position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom)); height: 46px; background: #fff; border: 1px solid rgba(0,0,0,.04); border-radius: 23px; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px; box-shadow: 0 6px 22px rgba(0,0,0,.14); z-index: 101; }
 .time-nav { display: flex; align-items: center; gap: 12px; }
 .tn-arrow { color: #bbb; font-size: 15px; }
 .tn-label { color: #666; font-size: 13px; min-width: 56px; text-align: center; }
@@ -485,6 +493,8 @@ onUnmounted(() => { window.removeEventListener('resize', onResize); chart?.dispo
 .type-panel { height: 100%; display: flex; flex-direction: column; }
 .tp-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 12px; font-size: 16px; font-weight: 700; border-bottom: 1px solid #f5f5f5; }
 .tp-head .van-icon { color: #999; font-size: 18px; }
+.tp-head .tp-hub { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--primary); }
+.tp-head .tp-hub .van-icon { font-size: 14px; color: var(--primary); }
 .tp-body { flex: 1; display: flex; min-height: 0; }
 .tp-side { width: 66px; flex-shrink: 0; background: #fafbfc; display: flex; flex-direction: column; padding-top: 8px; }
 .tp-side-item { height: 56px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 12px; position: relative; }

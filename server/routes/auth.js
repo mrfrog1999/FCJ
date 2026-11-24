@@ -28,29 +28,39 @@ router.post('/login', (req, res) => {
   if (!row || !bcrypt.compareSync(password || '', row.password_hash))
     return res.status(400).json({ error: '账号或密码错误' });
   seedDefaults(row.id);
-  const user = { id: row.id, username: row.username, nickname: row.nickname, avatar: row.avatar, bind_member_id: row.bind_member_id, theme: row.theme || 'fancy' };
+  const user = { id: row.id, username: row.username, nickname: row.nickname, avatar: row.avatar, bind_member_id: row.bind_member_id, theme: row.theme || 'fancy', is_admin: row.is_admin === 1 };
   res.json({ token: sign(user), user });
 });
 
 // 当前用户
 router.get('/me', auth, (req, res) => {
-  const row = db.prepare('SELECT id, username, nickname, avatar, bind_member_id, theme, created_at FROM users WHERE id = ?').get(req.user.id);
+  const row = db.prepare('SELECT id, username, nickname, avatar, bind_member_id, theme, is_admin, created_at FROM users WHERE id = ?').get(req.user.id);
   if (row && !row.theme) row.theme = 'fancy';
   if (!row) return res.status(401).json({ error: '用户不存在' });
+  row.is_admin = row.is_admin === 1;
   res.json(row);
 });
 
-// 修改当前用户资料（昵称 / 头像）
+// 修改当前用户资料（登录名 / 昵称 / 头像）
 // avatar 存 data URL 图片或预设键；传 null / '' 表示清空头像
 router.put('/me', auth, (req, res) => {
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!row) return res.status(401).json({ error: '用户不存在' });
-  let { nickname, avatar, theme } = req.body;
+  let { username, nickname, avatar, theme } = req.body;
+  // 登录名可修改：格式 + 唯一性校验
+  let finalName = row.username;
+  if (username != null && String(username).trim()) {
+    finalName = String(username).trim();
+    if (finalName.length < 2) return res.status(400).json({ error: '账号至少2位' });
+    const dup = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(finalName, req.user.id);
+    if (dup) return res.status(400).json({ error: '登录名已存在' });
+  }
   const finalNick = nickname != null && String(nickname).trim() ? String(nickname).trim() : row.nickname;
   const finalAvatar = sanitizeAvatar(avatar, row.avatar);
   const finalTheme = theme === 'standard' || theme === 'fancy' ? theme : (row.theme || 'fancy');
-  db.prepare('UPDATE users SET nickname = ?, avatar = ?, theme = ? WHERE id = ?').run(finalNick, finalAvatar, finalTheme, req.user.id);
-  res.json({ id: req.user.id, username: row.username, nickname: finalNick, avatar: finalAvatar, theme: finalTheme });
+  db.prepare('UPDATE users SET username = ?, nickname = ?, avatar = ?, theme = ? WHERE id = ?')
+    .run(finalName, finalNick, finalAvatar, finalTheme, req.user.id);
+  res.json({ id: req.user.id, username: finalName, nickname: finalNick, avatar: finalAvatar, theme: finalTheme });
 });
 
 module.exports = router;

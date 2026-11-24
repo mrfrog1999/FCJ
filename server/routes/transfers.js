@@ -38,13 +38,18 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   const err = validate(req.body);
   if (err) return res.status(400).json({ error: err });
-  const { book_id, from_account, to_account, amount, note, transfer_date, member_id } = req.body;
+  const { book_id, from_account, to_account, amount, note, transfer_date, member_id, client_id } = req.body;
   if (!canAccessBook(req.user.id, book_id)) return res.status(403).json({ error: '无权访问该账本' });
   const mid = resolveMemberId(book_id, member_id, req.user.id);
+  // 幂等：离线/弱网重试带着同一个 client_id 时，返回已写入的记录，不重复插入
+  if (client_id) {
+    const exist = db.prepare('SELECT id FROM transfers WHERE client_id = ?').get(String(client_id));
+    if (exist) return res.json({ id: exist.id, ok: true, duplicated: true });
+  }
   const info = db.prepare(`INSERT INTO transfers
-    (user_id, book_id, transfer_date, from_account, to_account, amount, member_id, note)
-    VALUES (?,?,?,?,?,?,?,?)`)
-    .run(req.user.id, book_id, transfer_date, from_account, to_account, Number(amount).toFixed(2), mid, note || '');
+    (user_id, book_id, transfer_date, from_account, to_account, amount, member_id, note, client_id)
+    VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(req.user.id, book_id, transfer_date, from_account, to_account, Number(amount).toFixed(2), mid, note || '', client_id ? String(client_id) : null);
   res.json({ id: info.lastInsertRowid, ok: true });
 });
 

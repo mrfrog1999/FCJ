@@ -238,7 +238,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.subpage { min-height: 100vh; background: #f5f6f8; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+.subpage { min-height: 100vh; min-height: 100dvh; background: #f5f6f8; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 .type-switch { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: #fff; border-bottom: 1px solid #f0f0f0; }
 .ts-tabs { display: flex; gap: 24px; }
 .ts-tabs span { color: #999; font-size: 15px; padding: 16px 0 12px; cursor: pointer; }

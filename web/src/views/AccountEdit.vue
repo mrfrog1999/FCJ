@@ -150,7 +150,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.edit-page { min-height: 100vh; padding-bottom: calc(20px + env(safe-area-inset-bottom)); background: #f5f6f8; }
+.edit-page { min-height: 100vh; min-height: 100dvh; padding-bottom: calc(20px + env(safe-area-inset-bottom)); background: #f5f6f8; }
 .topbar { position: sticky; top: 0; z-index: 10; height: calc(52px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); background: linear-gradient(135deg,#ff9a44 0%,#ff6b35 48%,#f0472d 100%); color: #fff; display: flex; align-items: center; justify-content: space-between; padding-left: 14px; padding-right: 14px; box-sizing: border-box; }
 .nav-left { min-width: 60px; font-size: 20px; }
 .nav-title { font-size: 16px; font-weight: 600; }

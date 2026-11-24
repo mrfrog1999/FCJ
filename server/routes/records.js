@@ -113,14 +113,19 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   const err = validate(req.body);
   if (err) return res.status(400).json({ error: err });
-  const { book_id, category_id, type, amount, note, record_date, member_id, account, category1, category2, merchant, project } = req.body;
+  const { book_id, category_id, type, amount, note, record_date, member_id, account, category1, category2, merchant, project, client_id } = req.body;
   if (!canAccessBook(req.user.id, book_id)) return res.status(403).json({ error: '无权写入该账本' });
   const memberId = resolveMemberId(book_id, member_id, req.user.id);
+  // 幂等：离线/弱网重试带着同一个 client_id 时，返回已写入的记录，不重复插入
+  if (client_id) {
+    const exist = db.prepare('SELECT id FROM records WHERE client_id = ?').get(String(client_id));
+    if (exist) return res.json({ id: exist.id, duplicated: true });
+  }
   const info = db.prepare(`
-    INSERT INTO records (user_id, book_id, category_id, type, amount, note, record_date, member_id, account, category1, category2, merchant, project)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    INSERT INTO records (user_id, book_id, category_id, type, amount, note, record_date, member_id, account, category1, category2, merchant, project, client_id)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(req.user.id, book_id, category_id || null, type, Number(amount).toFixed(2), note || '', record_date, memberId,
-    account || '', category1 || '', category2 || '', merchant || '', project || '');
+    account || '', category1 || '', category2 || '', merchant || '', project || '', client_id ? String(client_id) : null);
   res.json({ id: info.lastInsertRowid });
 });
 

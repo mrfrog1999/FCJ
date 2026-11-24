@@ -51,8 +51,21 @@ body {
   background: #f5f6f8;
   color: #1a1a1a;
   -webkit-font-smoothing: antialiased;
+  /* PWA/全屏下禁止整页橡皮筋回弹，滚动交给各页容器 */
+  overscroll-behavior-y: none;
 }
-.page { min-height: 100vh; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+}
+
+/* 全局：Vant 导航栏统一避开顶部状态栏（覆盖所有使用 van-nav-bar 的页面）。
+   __content 保持默认 height:100%，在 padding 之后的内容区里自然居中。 */
+.van-nav-bar {
+  padding-top: env(safe-area-inset-top);
+  height: calc(46px + env(safe-area-inset-top));
+}
 .gradient-card {
   background: var(--primary-grad);
   color: #fff;

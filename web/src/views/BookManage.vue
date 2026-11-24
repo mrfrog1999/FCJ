@@ -110,7 +110,7 @@ async function showMembers(b) {
 </script>
 
 <style scoped>
-.subpage { min-height: 100vh; background: #f5f6f8; padding-bottom: 30px; }
+.subpage { min-height: 100vh; min-height: 100dvh; background: #f5f6f8; padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
 .desc { font-size: 12px; color: #999; padding: 12px 16px; }
 .list { background: #fff; }
 .item { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #f5f5f5; }

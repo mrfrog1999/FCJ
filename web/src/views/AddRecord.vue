@@ -204,6 +204,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { useStore } from '../store'
 import { api } from '../api'
+import { enqueueCreate } from '../utils/offlineSync'
+import { readCache, writeCache } from '../utils/cache'
 import SvgIcon from '../components/SvgIcon.vue'
 import CategoryIcon from '../components/CategoryIcon.vue'
 import UserAvatar from '../components/UserAvatar.vue'
@@ -355,13 +357,19 @@ function parseDate(s) {
 onMounted(async () => {
   if (!store.ready) await store.loadBase().catch(() => {})
   if (!store.members.length) await store.loadMembers().catch(() => {})
-  // 加载分类树与账户
-  const [tree, accs] = await Promise.all([
-    api.categories.tree().catch(() => ({ expense: [], income: [] })),
-    api.accounts.list({ book_id: store.currentBookId }).catch(() => [])
+  // 加载分类树与账户：网络失败时回退到本地缓存，保证离线也能记一笔
+  const accKey = 'accounts_' + store.currentBookId
+  const [treeRaw, accs] = await Promise.all([
+    api.categories.tree().catch(() => null),
+    api.accounts.list({ book_id: store.currentBookId }).catch(() => null)
   ])
+  const cachedTree = readCache('cat_tree')
+  const tree = treeRaw || cachedTree || { expense: [], income: [] }
+  if (treeRaw) writeCache('cat_tree', treeRaw)
+  if (accs && accs.length) writeCache(accKey, accs)
+  const accList = accs || readCache(accKey) || []
   catTree.value = tree.expense.length ? tree.expense : tree.income
-  accounts.value = (accs || []).map(a => a.account).filter(Boolean)
+  accounts.value = (accList || []).map(a => a.account).filter(Boolean)
 
   // 默认成员：优先用账号关联的记账成员，其次登录账号自己，兜底第一个成员
   const bindId = store.user?.bind_member_id
@@ -471,10 +479,19 @@ async function save() {
       member_id: memberId.value
     }
     try {
-      if (isTransferEdit.value) await api.transfers.update(String(route.query.id).replace('transfer_', ''), payload)
-      else await api.transfers.create(payload)
+      let offline = false
+      if (isTransferEdit.value) {
+        await api.transfers.update(String(route.query.id).replace('transfer_', ''), payload)
+      } else {
+        try { await api.transfers.create(payload) }
+        catch (e) {
+          if (!e.isNetwork) throw e
+          enqueueCreate('transfer.create', payload)
+          offline = true
+        }
+      }
       store.touch()
-      showToast('保存成功')
+      showToast(offline ? '已存到本地，联网后自动同步' : '保存成功')
       setTimeout(() => router.back(), 400)
     } catch (e) { showToast(e.message) }
     return
@@ -495,21 +512,35 @@ async function save() {
     category2: catName.value
   }
   try {
-    if (isEdit.value) await api.records.update(route.query.id, payload)
-    else await api.records.create(payload)
+    let offline = false
+    if (isEdit.value) {
+      await api.records.update(route.query.id, payload)
+    } else {
+      try { await api.records.create(payload) }
+      catch (e) {
+        if (!e.isNetwork) throw e
+        enqueueCreate('record.create', payload)
+        offline = true
+      }
+    }
     store.touch()
-    showToast('保存成功')
+    showToast(offline ? '已存到本地，联网后自动同步' : '保存成功')
     setTimeout(() => router.back(), 400)
   } catch (e) { showToast(e.message) }
 }
 
 // 分类选择
 function openCat() {
-  api.categories.tree().then(tree => {
+  const applyTree = tree => {
+    if (!tree) tree = { expense: [], income: [] }
     catTree.value = type.value === 'income' && tree.income.length ? tree.income : tree.expense
     catShow.value = true
     catSubMode.value = false
-  }).catch(() => { catShow.value = true })
+  }
+  api.categories.tree().then(tree => {
+    writeCache('cat_tree', tree)
+    applyTree(tree)
+  }).catch(() => applyTree(readCache('cat_tree')))
 }
 function pickCatGroup(g) { curGroup.value = g; catSubMode.value = true }
 function pickCat(c) {
@@ -586,9 +617,9 @@ function resetTime() { dateObj.value = new Date() }
 </script>
 
 <style scoped>
-.add-page { min-height: 100vh; background: #fff; padding-bottom: calc(262px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+.add-page { min-height: 100vh; min-height: 100dvh; background: #fff; padding-bottom: calc(262px + env(safe-area-inset-bottom)); box-sizing: border-box; }
 .add-page.kp-folded { padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
-.navbar { height: 50px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; position: relative; }
+.navbar { height: calc(50px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); display: flex; align-items: center; justify-content: space-between; padding-left: 16px; padding-right: 16px; position: relative; background: #fff; }
 .nav-left { font-size: 22px; color: #333; width: 40px; }
 .nav-title { position: absolute; left: 50%; transform: translateX(-50%); font-size: 17px; font-weight: 600; color: #222; }
 .nav-save { display: flex; align-items: center; gap: 3px; color: #ff9a2e; font-size: 15px; font-weight: 600; cursor: pointer; }

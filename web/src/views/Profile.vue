@@ -25,6 +25,7 @@
 
     <van-cell-group inset class="cell-card">
       <van-cell title="当前账本" :value="store.currentBook?.name || '-'" />
+      <van-cell title="离线同步" icon="replay" :value="syncText" is-link @click="syncNow" />
       <van-cell title="备份与恢复" icon="down" is-link label="导出 / 导入 XLS 备份" @click="$router.push('/backup')" />
       <van-cell title="版本" value="v1.0.0" />
     </van-cell-group>
@@ -64,6 +65,7 @@
     <van-popup v-model:show="profileShow" position="bottom" round>
       <div class="popup">
         <div class="popup-title">编辑资料</div>
+        <van-field v-model="form.username" label="登录账号" placeholder="登录名（至少2位）" />
         <div class="avatar-edit" @click="pickImage">
           <UserAvatar :avatar="form.avatar" :name="form.nickname" :color="memberColor(store.user?.id)" :size="72" />
           <div class="avatar-tip"><van-icon name="photograph" /> 点击更换头像</div>
@@ -85,7 +87,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { useStore } from '../store'
@@ -94,6 +96,8 @@ import UserAvatar from '../components/UserAvatar.vue'
 import { memberColor } from '../utils/members'
 import { fileToAvatarDataUrl, PRESET_COLORS } from '../utils/avatar'
 import { iconTheme, setIconTheme, THEME_STANDARD, THEME_FANCY } from '../utils/theme'
+import { count as queueCount } from '../utils/syncQueue'
+import { flushSync } from '../utils/offlineSync'
 
 const store = useStore()
 const router = useRouter()
@@ -105,7 +109,7 @@ const budgetInput = ref('')
 const profileShow = ref(false)
 const saving = ref(false)
 const fileInput = ref(null)
-const form = ref({ nickname: '', avatar: '' })
+const form = ref({ username: '', nickname: '', avatar: '' })
 
 const THEMES = [
   { value: THEME_STANDARD, label: '标准' },
@@ -117,10 +121,21 @@ const themeSaving = ref(false)
 const themeLabel = computed(() => themeVal.value === THEME_STANDARD ? '标准' : '炫彩')
 
 const fmt = n => Number(n || 0).toFixed(2)
-const isAdmin = computed(() => store.user?.username === 'admin')
+const isAdmin = computed(() => store.user?.is_admin === true)
+
+// 离线待同步状态
+const syncPending = ref(0)
+const syncText = computed(() => syncPending.value > 0 ? `${syncPending.value} 条待同步` : '已全部同步')
+function refreshSync() { syncPending.value = queueCount() }
+async function syncNow() {
+  if (!syncPending.value) return showToast('没有待同步的记录')
+  const r = await flushSync()
+  refreshSync()
+  showToast(r.synced > 0 ? `已同步 ${r.synced} 条` : '网络不可用，联网后会自动重试')
+}
 
 function openProfile() {
-  form.value = { nickname: store.user?.nickname || '', avatar: store.user?.avatar || '' }
+  form.value = { username: store.user?.username || '', nickname: store.user?.nickname || '', avatar: store.user?.avatar || '' }
   profileShow.value = true
 }
 
@@ -151,12 +166,15 @@ async function onFile(e) {
   e.target.value = ''
 }
 async function saveProfile() {
+  const name = String(form.value.username || '').trim()
   const nick = String(form.value.nickname || '').trim()
+  if (!name) return showToast('请输入登录账号')
+  if (name.length < 2) return showToast('账号至少2位')
   if (!nick) return showToast('请输入昵称')
   saving.value = true
   try {
-    const res = await api.auth.updateProfile({ nickname: nick, avatar: form.value.avatar || null })
-    store.updateUser({ nickname: res.nickname, avatar: res.avatar })
+    const res = await api.auth.updateProfile({ username: name, nickname: nick, avatar: form.value.avatar || null })
+    store.updateUser({ username: res.username, nickname: res.nickname, avatar: res.avatar })
     profileShow.value = false
     showToast('保存成功')
   } catch (e) { showToast(e.message) }
@@ -182,10 +200,13 @@ function logout() {
   router.replace('/login')
 }
 onMounted(async () => {
+  refreshSync()
+  window.addEventListener('ssj:synced', refreshSync)
   if (store.currentBookId) {
     try { budget.value = (await api.stats.getBudget({ book_id: store.currentBookId, month: month.value })) || 0 } catch (e) {}
   }
 })
+onActivated(refreshSync)
 </script>
 
 <style scoped>

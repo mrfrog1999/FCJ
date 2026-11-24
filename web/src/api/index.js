@@ -38,12 +38,18 @@ request.interceptors.response.use(
   res => res.data,
   err => {
     const msg = err.response?.data?.error || err.message || '网络错误'
-    if (err.response?.status === 401) {
+    const status = err.response?.status
+    // isNetwork=true 表示请求根本没到服务器（断网/DNS/超时），这类写入可安全入队重试
+    const isNetwork = !err.response || status >= 500
+    if (status === 401) {
       localStorage.removeItem('ssj_token')
       localStorage.removeItem('ssj_user')
       if (location.hash !== '#/login') location.hash = '#/login'
     }
-    return Promise.reject(new Error(msg))
+    const wrapped = new Error(msg)
+    wrapped.isNetwork = isNetwork
+    wrapped.status = status || 0
+    return Promise.reject(wrapped)
   }
 )
 

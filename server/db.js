@@ -194,16 +194,28 @@ function canAccessBook(userId, bookId) {
   return !!member;
 }
 
+// 一次性迁移：users 增加 is_admin（管理员标识，与登录名解耦，登录名可修改）
+function migrateUserIsAdmin() {
+  const cols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+  if (!cols.includes('is_admin')) {
+    db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0');
+    // 已有库：原管理员账号标记为管理员
+    db.exec("UPDATE users SET is_admin = 1 WHERE username = 'admin'");
+  }
+}
+migrateUserIsAdmin();
+
 // 默认管理员账号：admin / admin123321（每次启动确保存在，密码重置为初始值）
-// 注意：不再覆盖 nickname / avatar，否则管理员修改的名称和头像会在重启后丢失
+// 注意：不再覆盖 nickname / avatar / username，否则管理员修改的资料会在重启后丢失
+// 管理员身份由 is_admin 标识，与登录名解耦，因此登录名可以修改
 function seedAdmin() {
   const hash = bcrypt.hashSync('admin123321', 8);
-  const exist = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
+  let exist = db.prepare('SELECT id FROM users WHERE is_admin = 1 ORDER BY id LIMIT 1').get();
   if (exist) {
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, exist.id);
+    db.prepare('UPDATE users SET password_hash = ?, is_admin = 1 WHERE id = ?').run(hash, exist.id);
     seedDefaults(exist.id);
   } else {
-    const info = db.prepare('INSERT INTO users (username, password_hash, nickname) VALUES (?,?,?)')
+    const info = db.prepare('INSERT INTO users (username, password_hash, nickname, is_admin) VALUES (?,?,?,1)')
       .run('admin', hash, '管理员');
     seedDefaults(info.lastInsertRowid);
   }
@@ -316,9 +328,20 @@ function migrateAccountCategory() {
   if (!cols.includes('category')) db.exec('ALTER TABLE account_meta ADD COLUMN category TEXT');
 }
 migrateAccountCategory();
+
+// 离线同步幂等键：client_id 唯一（部分索引，NULL 不冲突）。
+// 客户端在离线/弱网时生成 client_id 随记录提交，重试同一条不会重复插入。
+function migrateSyncClientId() {
+  for (const t of ['records', 'transfers']) {
+    const cols = db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
+    if (!cols.includes('client_id')) db.exec(`ALTER TABLE ${t} ADD COLUMN client_id TEXT`);
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${t}_client_id ON ${t}(client_id) WHERE client_id IS NOT NULL`);
+  }
+}
+migrateSyncClientId();
 // 一次性迁移：把所有非管理员账号补进管理员拥有的账本（修复"建了账号但不在成员里"的历史数据）
 function migrateAccountsIntoAdminBooks() {
-  const adminRows = db.prepare("SELECT id FROM users WHERE username = 'admin'").all();
+  const adminRows = db.prepare('SELECT id FROM users WHERE is_admin = 1').all();
   if (!adminRows.length) return;
   const addMember = db.prepare('INSERT OR IGNORE INTO book_members (book_id, user_id, role) VALUES (?,?,?)');
   const tx = db.transaction(() => {

@@ -417,7 +417,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.backup-page { padding-bottom: 32px; background: #f5f6f8; }
+.backup-page { padding-bottom: calc(32px + env(safe-area-inset-bottom)); background: #f5f6f8; }
 
 /* 顶部 Hero */
 .hero { position: relative; overflow: hidden; margin: 12px 12px 6px; border-radius: 16px; background: var(--primary-grad); padding: 22px 20px 20px; color: #fff; box-shadow: 0 8px 24px rgba(255,107,53,.25); }

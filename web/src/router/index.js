@@ -10,7 +10,8 @@ const routes = [
     children: [
       { path: 'home', name: 'home', component: () => import('../views/Home.vue'), meta: { title: '首页' } },
       { path: 'detail', name: 'detail', component: () => import('../views/Detail.vue'), meta: { title: '流水' } },
-      { path: 'stats', name: 'stats', component: () => import('../views/Stats.vue'), meta: { title: '统计' } },
+      { path: 'stats', name: 'stats', component: () => import('../views/StatsChart.vue'), meta: { title: '统计' } },
+      { path: 'stats-hub', name: 'stats-hub', component: () => import('../views/Stats.vue'), meta: { title: '统计中心' } },
       { path: 'stats-chart', name: 'stats-chart', component: () => import('../views/StatsChart.vue'), meta: { title: '统计图表' } },
       { path: 'account-list', name: 'account-list', component: () => import('../views/Accounts.vue'), meta: { title: '账户' } },
       { path: 'profile', name: 'profile', component: () => import('../views/Profile.vue'), meta: { title: '我的' } }

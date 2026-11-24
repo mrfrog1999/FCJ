@@ -139,7 +139,7 @@
 </template>
 
 <script setup>
-import { ref, shallowRef, computed, watch, onMounted, onActivated, nextTick } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted, onActivated, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
 import { useStore } from '../store'
@@ -149,6 +149,7 @@ import CategoryIcon from '../components/CategoryIcon.vue'
 import FlipNumber from '../components/FlipNumber.vue'
 import { memberName } from '../utils/members'
 import { readCacheAsync, writeCacheAsync } from '../utils/cache'
+import { mergePending, revokePending } from '../utils/offlineSync'
 import { transferIconUrl } from '../utils/categoryIconMap'
 import { iconTheme } from '../utils/theme'
 
@@ -387,9 +388,20 @@ function toggleYear(y) {
   foldYears.value = { ...foldYears.value, [y]: foldYears.value[y] !== true }
 }
 function edit(r) {
+  if (r._local) return showToast('这笔还没上传，联网同步后可编辑')
   router.push({ path: '/add', query: { id: r.id } })
 }
 async function remove(r) {
+  // 本地待同步记录：直接从队列撤销，无需请求服务端
+  if (r._local) {
+    try {
+      await showConfirmDialog({ title: '删除记录', message: '确定删除这笔还未上传的记录吗？' })
+      revokePending(r._clientId)
+      allRecords.value = allRecords.value.filter(x => x.id !== r.id)
+      showToast('已删除')
+    } catch (e) { /* 取消 */ }
+    return
+  }
   try {
     await showConfirmDialog({ title: '删除记录', message: '确定删除这笔记录吗？' })
     if (r.type === 'transfer') await api.transfers.remove(String(r.id).replace('transfer_', ''))
@@ -417,10 +429,16 @@ async function load(silent = false) {
     const params = { book_id: bookId, with_transfers: 1 }
     if (!isAllYears.value) params.month = String(year.value)
     const list = await api.records.list(params)
-    allRecords.value = list
+    // 服务端为准：其它端删除的记录自然消失；再把本地尚未上传的乐观记录补进来
+    allRecords.value = mergePending(list, bookId, isAllYears.value ? '' : String(year.value))
     // 大明细写 IndexedDB（异步、不阻塞）；不 await，避免拖慢数据呈现
     writeCacheAsync(detailCacheKey.value, list)
-  } catch (e) { showToast(e.message) }
+  } catch (e) {
+    // 离线/弱网：主动读本页缓存作为底座，再合并待同步队列，保证页面照常打开
+    const cached = await readCacheAsync(detailCacheKey.value)
+    const base = (Array.isArray(cached) && cached.length) ? cached : allRecords.value
+    allRecords.value = mergePending(base, bookId, isAllYears.value ? '' : String(year.value))
+  }
   loaded.value = true
   // 非静默刷新才把列表滚回顶部、更新 banner；静默刷新保留当前浏览位置
   if (!silent) {
@@ -468,6 +486,9 @@ watch([year, () => store.currentBookId], () => load(false))
 function refreshIfNeeded() {
   if (lastVersion !== store.dataVersion) load(true)
 }
+// 服务端数据变更（其它端增删改/本端补传完成）后静默重拉，让删除等操作实时同步过来
+function onRemotePull() { if (store.ready || store.currentBookId) load(true) }
+
 onMounted(async () => {
   // 异步读 IndexedDB 明细缓存（不阻塞主线程），命中则先就位真实数据
   const cached = await readCacheAsync(detailCacheKey.value)
@@ -479,17 +500,25 @@ onMounted(async () => {
     bannerReady.value = true
     lastVersion = store.dataVersion - 1  // 保证下面仍触发一次后台静默刷新
   }
-  if (!store.ready) await store.loadBase().catch(() => {})
+  // 不再 await：离线/弱网下 loadBase 会把网络错误抛出而卡住，导致缓存无法渲染、页面打不开。
+  // 基础数据放后台加载，失败也不影响本页用缓存 + 待同步队列正常打开。
+  if (!store.ready) store.loadBase().catch(() => {})
   refreshIfNeeded()
+  window.addEventListener('ssj:pull', onRemotePull)
+  window.addEventListener('ssj:synced', onRemotePull)
 })
 onActivated(() => { if (store.ready) refreshIfNeeded() })
+onUnmounted(() => {
+  window.removeEventListener('ssj:pull', onRemotePull)
+  window.removeEventListener('ssj:synced', onRemotePull)
+})
 </script>
 
 <style scoped>
-/* 页面固定为 tabbar 之上的一屏，列表内部独立滚动 */
+/* 页面固定铺满一屏（本页无底部 tab），列表内部独立滚动 */
 .page.flow-page {
-  height: calc(100vh - 58px - env(safe-area-inset-bottom));
-  height: calc(100dvh - 58px - env(safe-area-inset-bottom));
+  height: calc(100vh - env(safe-area-inset-bottom));
+  height: calc(100dvh - env(safe-area-inset-bottom));
   min-height: 0;
   padding-bottom: 0;
   overflow: hidden;
@@ -540,7 +569,7 @@ onActivated(() => { if (store.ready) refreshIfNeeded() })
 
 /* 月份分组 */
 /* 列表独立滚动区：仅占 banner 之下的剩余高度 */
-.list-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding-bottom: calc(132px + env(safe-area-inset-bottom)); }
+.list-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 .list-scroll::-webkit-scrollbar { display: none; }
 .month-list { margin-top: 0; }
 /* 长列表渲染优化：跳过屏幕外月份块的布局与绘制，首屏更快 */

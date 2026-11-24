@@ -94,11 +94,12 @@
 </template>
 
 <script setup>
-import { ref, shallowRef, computed, onMounted, onActivated } from 'vue'
+import { ref, shallowRef, computed, onMounted, onActivated, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { useStore } from '../store'
 import { readCacheAsync, writeCacheAsync } from '../utils/cache'
+import { mergePending } from '../utils/offlineSync'
 import { api } from '../api'
 
 const store = useStore()
@@ -193,10 +194,13 @@ async function load() {
       api.records.list({ book_id: bookId, month: String(year) }),
       api.stats.getBudget({ book_id: bookId, month: curMonth })
     ])
-    allRecords.value = list
+    allRecords.value = mergePending(list, bookId, String(year))
     budget.value = bud || 0
     writeCacheAsync(homeCacheKey.value, { list, budget: bud || 0 })
-  } catch (e) { showToast(e.message) }
+  } catch (e) {
+    // 离线/弱网：把待同步队列里刚记的记录补进列表，金额与明细即时可见
+    allRecords.value = mergePending(allRecords.value, bookId, String(year))
+  }
 }
 
 let lastVersion = -1
@@ -204,6 +208,7 @@ function refreshIfNeeded() {
   // 首次进入或数据发生变更后才重新取数，否则直接用 keep-alive 缓存
   if (lastVersion !== store.dataVersion) { lastVersion = store.dataVersion; load() }
 }
+function onRemotePull() { if (store.ready || store.currentBookId) load() }
 onMounted(async () => {
   // 异步读 IndexedDB 缓存，命中先就位真实数据（预算也一并恢复）
   const cached = await readCacheAsync(homeCacheKey.value)
@@ -212,10 +217,17 @@ onMounted(async () => {
     budget.value = cached.budget || 0
     lastVersion = store.dataVersion - 1  // 仍触发一次后台静默刷新
   }
-  if (!store.ready) await store.loadBase().catch(() => {})
+  // 不 await：离线/弱网下 loadBase 卡在网络错误会挡住缓存渲染
+  if (!store.ready) store.loadBase().catch(() => {})
   refreshIfNeeded()
+  window.addEventListener('ssj:pull', onRemotePull)
+  window.addEventListener('ssj:synced', onRemotePull)
 })
 onActivated(() => { if (store.ready) refreshIfNeeded() })
+onUnmounted(() => {
+  window.removeEventListener('ssj:pull', onRemotePull)
+  window.removeEventListener('ssj:synced', onRemotePull)
+})
 </script>
 
 <style scoped>
@@ -231,7 +243,7 @@ onActivated(() => { if (store.ready) refreshIfNeeded() })
   box-sizing: border-box;
 }
 
-.hero { position: relative; flex: 0 0 190px; height: 190px; overflow: hidden; }
+.hero { position: relative; flex: 0 0 190px; height: 190px; overflow: hidden; padding-top: env(safe-area-inset-top); }
 .hero-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
 .hero-mask { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.18) 0%, rgba(0,0,0,.30) 55%, rgba(0,0,0,.42) 100%); }
 .hero-content { position: absolute; z-index: 2; left: 22px; bottom: 24px; color: #fff; }
@@ -263,7 +275,7 @@ onActivated(() => { if (store.ready) refreshIfNeeded() })
 .s-expense { color: #1ebd7e; font-size: 15px; font-weight: 600; margin-top: 3px; }
 .s-arrow { color: #ccc; font-size: 15px; margin-left: 8px; flex-shrink: 0; }
 
-.popup { padding: 20px 16px 24px; }
+.popup { padding: 20px 16px calc(24px + env(safe-area-inset-bottom)); }
 .popup-title { font-size: 16px; font-weight: 600; text-align: center; margin-bottom: 16px; }
 .popup-btns { display: flex; gap: 10px; margin-top: 18px; }
 </style>

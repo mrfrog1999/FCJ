@@ -47,7 +47,7 @@ async function submit() {
 </script>
 
 <style scoped>
-.login { min-height: 100vh; background: linear-gradient(180deg, #ff9a44 0%, #ff6b35 42%, #f5f6f8 42%); }
+.login { min-height: 100vh; min-height: 100dvh; padding-top: env(safe-area-inset-top); background: linear-gradient(180deg, #ff9a44 0%, #ff6b35 42%, #f5f6f8 42%); }
 .brand { text-align: center; padding: 70px 0 30px; color: #fff; }
 .logo { display: flex; justify-content: center; filter: drop-shadow(0 4px 10px rgba(0,0,0,.15)); }
 .name { font-size: 28px; font-weight: 700; margin-top: 6px; letter-spacing: 2px; }

@@ -67,6 +67,8 @@ export const useStore = defineStore('main', {
         try {
           const me = await api.auth.me()
           if (me && me.id === this.user?.id) this.updateUser({
+            username: me.username,
+            is_admin: me.is_admin,
             bind_member_id: me.bind_member_id,
             theme: me.theme || 'fancy'
           })

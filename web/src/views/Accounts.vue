@@ -142,7 +142,7 @@ async function load() {
     const list = await api.accounts.list(store.currentBookId ? { book_id: store.currentBookId } : {})
     accounts.value = list
     writeCache(accCacheKey.value, list)
-  } catch (e) { accounts.value = [] }
+  } catch (e) { /* 断网保留本地缓存数据，不清空 */ }
   loaded.value = true
   await nextTick()
   bannerReady.value = true
@@ -159,7 +159,7 @@ onActivated(() => { if (store.ready) refreshIfNeeded() })
 </script>
 
 <style scoped>
-.account-page { padding-bottom: calc(58px + env(safe-area-inset-bottom)); background: #f5f6f8; min-height: 100vh; }
+.account-page { padding-bottom: calc(20px + env(safe-area-inset-bottom)); background: #f5f6f8; min-height: 100vh; min-height: 100dvh; }
 
 /* 顶部 banner */
 /* 顶部橙红渐变 banner：与流水页一致，覆盖浏览器状态栏，高度贴合文字 */
