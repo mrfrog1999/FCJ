@@ -1,0 +1,22 @@
+# 随手记 · 本地源码构建备用编排（不依赖 GHCR）
+# 当无法从 ghcr.io 拉取镜像时，可用本文件在服务器上直接构建。
+# 用法：docker compose -f docker-compose.local.yml up -d --build
+# 注意：使用本文件需先把项目源码上传到服务器。
+
+services:
+  suisoji:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: suisoji:local
+    container_name: suisoji
+    restart: unless-stopped
+    ports:
+      - "8668:8668"
+    volumes:
+      - ./data:/app/data
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - PORT=8668
+      - JWT_SECRET=suisoji-secret-key-2026
+      - TZ=Asia/Shanghai

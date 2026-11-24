@@ -1,0 +1,44 @@
+# 依赖（体积大且可从 package-lock 重建）
+node_modules/
+**/node_modules/
+
+# 构建产物（由 GitHub Actions / Dockerfile 生成）
+dist/
+web/dist/
+server/public/assets/
+server/public/*.js
+server/public/*.css
+server/public/index.html
+server/public/manifest.webmanifest
+server/public/sw.js
+
+# ===== 隐私数据：绝不入库 =====
+# 数据库（含真实账本、账号、邮箱配置、授权码）
+server/data/
+*.db
+*.db-wal
+*.db-shm
+*.db.bak*
+*.sqlite
+*.sqlite3
+
+# 后端图标资源是从 web/public 同步的副本，由 Dockerfile 重新生成，无需入库
+server/public/category-icons/
+server/public/bank-icons/
+server/public/fancy-icons/
+server/public/fonts/
+server/public/icons/
+
+# 日志
+*.log
+
+# 环境变量与密钥
+.env
+.env.*
+*.pem
+
+# 编辑器/系统
+.DS_Store
+.idea/
+.vscode/
+*.swp

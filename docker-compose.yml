@@ -1,0 +1,36 @@
+# 随手记 · 1Panel / 飞牛 fnOS 通用部署文件
+# 镜像由 GitHub Actions 自动构建并推送到 GHCR（ghcr.io/mrfrog1999/fcj:latest）
+# 访问地址：http://服务器IP:8668
+#
+# 用法：
+#   1Panel：容器 → 编排 → 创建编排 → 粘贴本文件内容 → 启动
+#   飞牛 fnOS：Docker → 项目/Compose → 新建 → 粘贴本文件内容 → 启动
+#   命令行：docker compose up -d
+#
+# 注意：仓库为公开项目，GHCR 镜像公开，无需登录即可拉取。
+#       若日后改为私有镜像，先在服务器执行：
+#       echo <TOKEN> | docker login ghcr.io -u <用户名> --password-stdin
+
+services:
+  suisoji:
+    # 从 GitHub Container Registry 拉取由 Actions 构建好的镜像
+    image: ghcr.io/mrfrog1999/fcj:latest
+    container_name: suisoji
+    # 若需指定平台可取消注释（一般自动识别，无需设置）
+    # platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      # 格式：宿主机端口:容器端口，右侧固定 8668
+      - "8668:8668"
+    volumes:
+      # 账本数据持久化：宿主机 ./data 映射到容器 /app/data
+      # 请务必备份此目录，内含全部账本数据
+      - ./data:/app/data
+      # 同步宿主机时区，保证记账日期正确
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - PORT=8668
+      # 自定义 JWT 签名密钥，建议改成随机字符串（各部署实例保持唯一）
+      - JWT_SECRET=suisoji-secret-key-2026
+      # 时区
+      - TZ=Asia/Shanghai

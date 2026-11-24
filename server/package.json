@@ -1,0 +1,21 @@
+{
+  "name": "suisoji-server",
+  "version": "1.0.0",
+  "description": "随手记 - 记账服务后端",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node app.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.7.0",
+    "compression": "^1.8.2",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.5.0",
+    "nodemailer": "^10.6.1",
+    "xlsx": "^0.18.5"
+  }
+}

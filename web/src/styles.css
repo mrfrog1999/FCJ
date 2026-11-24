@@ -1,0 +1,68 @@
+/* D-DIN PRO：随手记数字字体同类（DIY 数字字体 Sui-Number 亦属 DIN 家族），几何开放笔画 */
+@font-face {
+  font-family: 'D-DIN-PRO';
+  src: url('/fonts/D-DIN-PRO-400-Regular.woff2') format('woff2');
+  font-style: normal; font-weight: 400; font-display: swap;
+}
+@font-face {
+  font-family: 'D-DIN-PRO';
+  src: url('/fonts/D-DIN-PRO-500-Medium.woff2') format('woff2');
+  font-style: normal; font-weight: 500; font-display: swap;
+}
+@font-face {
+  font-family: 'D-DIN-PRO';
+  src: url('/fonts/D-DIN-PRO-600-SemiBold.woff2') format('woff2');
+  font-style: normal; font-weight: 600; font-display: swap;
+}
+@font-face {
+  font-family: 'D-DIN-PRO';
+  src: url('/fonts/D-DIN-PRO-700-Bold.woff2') format('woff2');
+  font-style: normal; font-weight: 700; font-display: swap;
+}
+@font-face {
+  font-family: 'D-DIN-PRO';
+  src: url('/fonts/D-DIN-PRO-800-ExtraBold.woff2') format('woff2');
+  font-style: normal; font-weight: 800; font-display: swap;
+}
+@font-face {
+  font-family: 'D-DIN-PRO';
+  src: url('/fonts/D-DIN-PRO-900-Heavy.woff2') format('woff2');
+  font-style: normal; font-weight: 900; font-display: swap;
+}
+
+:root {
+  --van-primary-color: #ff6b35;
+  --van-danger-color: #ee0a24;
+  --van-success-color: #07c160;
+  --van-background-2: #f7f8fa;
+  --primary: #ff6b35;
+  --primary-grad: linear-gradient(135deg, #ff9a44 0%, #ff6b35 55%, #ff5e3a 100%);
+  --expense: #ff5e3a;
+  --income: #1ebd7e;
+  /* 数字/字母优先 D-DIN；中文自动回退系统字体（D-DIN 无中文字形） */
+  --app-font: 'D-DIN-PRO', 'DIN Alternate', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --van-font-family: var(--app-font);
+}
+
+* { box-sizing: border-box; }
+html, body, #app { margin: 0; padding: 0; min-height: 100%; }
+body {
+  font-family: var(--app-font);
+  background: #f5f6f8;
+  color: #1a1a1a;
+  -webkit-font-smoothing: antialiased;
+}
+.page { min-height: 100vh; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+.gradient-card {
+  background: var(--primary-grad);
+  color: #fff;
+  border-radius: 0 0 20px 20px;
+}
+.amount-in { color: var(--income); }
+.amount-out { color: var(--expense); }
+.tabbar-safe { padding-bottom: env(safe-area-inset-bottom); }
+.cell-card { border-radius: 12px; overflow: hidden; margin: 10px 12px; }
+.section-title { font-size: 13px; color: #999; padding: 14px 16px 6px; }
+.muted { color: #999; }
+.flex { display: flex; align-items: center; }
+.between { justify-content: space-between; }
