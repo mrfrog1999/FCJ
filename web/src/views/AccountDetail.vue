@@ -1,6 +1,6 @@
 <template>
   <div class="page account-detail">
-    <van-nav-bar :title="account" left-text="返回" left-arrow @click-left="$router.back()" />
+    <van-nav-bar :title="account" left-arrow @click-left="$router.back()" />
 
     <div class="month-nav">
       <van-icon name="arrow-left" @click="changeMonth(-1)" />
@@ -172,8 +172,8 @@ onMounted(async () => {
 .sum-row { display: flex; justify-content: space-around; text-align: center; }
 .sum-row .lbl { font-size: 12px; opacity: .85; }
 .sum-row .val { font-size: 18px; font-weight: 600; margin-top: 4px; }
-.sum-row .val.up { color: #fff; }
-.sum-row .val.down { color: #ffe0d0; }
+.sum-row .val.up { color: var(--income); }
+.sum-row .val.down { color: var(--expense); }
 .sum-sub { display: flex; justify-content: center; gap: 14px; font-size: 11px; opacity: .85; margin-top: 12px; }
 .sum-note { text-align: center; font-size: 10px; opacity: .7; margin-top: 8px; line-height: 1.5; }
 .legend { display: flex; justify-content: center; gap: 16px; padding: 10px 0 4px; font-size: 11px; color: #999; }

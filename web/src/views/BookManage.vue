@@ -1,6 +1,6 @@
 <template>
   <div class="subpage">
-    <van-nav-bar title="账本管理" left-text="返回" left-arrow @click-left="$router.back()" />
+    <van-nav-bar title="账本管理" left-arrow @click-left="$router.back()" />
     <div class="desc">切换账本，或邀请好友一起协同记账</div>
 
     <div class="list">
@@ -13,7 +13,7 @@
           </div>
           <div class="bright">
             <van-icon v-if="b.id == store.currentBookId" name="success" color="var(--primary)" size="22" />
-            <van-icon name="friends-o" size="20" color="#999" @click.stop="showMembers(b)" />
+            <van-icon name="team-o" size="20" color="#999" @click.stop="showMembers(b)" />
           </div>
         </div>
         <template #right>

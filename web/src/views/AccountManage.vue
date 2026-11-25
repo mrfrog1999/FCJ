@@ -1,6 +1,6 @@
 <template>
   <div class="page account-page">
-    <van-nav-bar title="账号管理" left-text="返回" left-arrow @click-left="$router.back()" />
+    <van-nav-bar title="账号管理" left-arrow @click-left="$router.back()" />
     <div class="tip-bar">管理员可创建账号、重置密码，并为每个账号设置「关联记账成员」：该账号登录后记一笔，默认记在关联成员名下。点账号行即可快速设置。</div>
 
     <div class="add-bar"><van-button type="primary" block icon="plus" @click="openAdd">新建账号</van-button></div>
@@ -38,7 +38,7 @@
         <div class="popup-title">{{ editing ? '编辑账号' : '新建账号' }}</div>
         <div class="avatar-edit" @click="pickImage">
           <UserAvatar :avatar="form.avatar" :name="form.nickname" :color="memberColor(editing?.id)" :size="64" />
-          <div class="avatar-tip"><van-icon name="photograph" /> 点击更换头像</div>
+          <div class="avatar-tip"><van-icon name="camera-o" /> 点击更换头像</div>
         </div>
         <input ref="fileInput" type="file" accept="image/*" class="hidden-file" @change="onFile" />
         <div class="preset-colors">

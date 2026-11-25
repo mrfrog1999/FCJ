@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
-import { clearCache } from '../utils/cache'
+import { clearCache, readCache, writeCache } from '../utils/cache'
 import { setIconTheme } from '../utils/theme'
 
 export const useStore = defineStore('main', {
@@ -59,7 +59,16 @@ export const useStore = defineStore('main', {
       } catch (e) { this.members = []; return [] }
     },
     async loadBase() {
-      const [cats, books] = await Promise.all([api.categories.list(), api.books.list()])
+      // 分类与账本各自容错：在线拉取并缓存，离线回退缓存，保证离线也能渲染基础数据
+      let cats, books
+      try {
+        cats = await api.categories.list()
+        writeCache('base_categories', cats)
+      } catch (e) { cats = readCache('base_categories') || [] }
+      try {
+        books = await api.books.list()
+        writeCache('base_books', books)
+      } catch (e) { books = readCache('base_books') || [] }
       this.categories = cats
       this.books = books
       // 刷新当前用户信息（含管理员设置的关联记账成员），失败不影响主流程

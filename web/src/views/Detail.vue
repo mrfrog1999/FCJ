@@ -1,9 +1,13 @@
 <template>
-  <div class="page flow-page">
+  <div class="page flow-page"
+    @touchstart.capture="edge.onStart"
+    @touchmove.capture="edge.onMove"
+    @touchend.capture="edge.onEnd"
+    @touchcancel.capture="edge.onEnd">
     <!-- 顶部橙红渐变 banner + 导航 + 结余 -->
     <div class="hero">
       <div class="navbar">
-        <div class="nav-left" @click="$router.push('/home')">
+        <div class="nav-left" @click="goBack">
           <van-icon name="arrow-left" />
         </div>
         <div class="nav-title">流水</div>
@@ -23,12 +27,16 @@
       </div>
       <!-- 右下角筛选按钮 -->
       <div class="hero-filter" :class="{ on: hasFilter }" @click="openFilter">
-                        <svg class="hero-filter-svg" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M153.6 256h716.8a51.2 51.2 0 0 0 0-102.4H153.6a51.2 51.2 0 0 0 0 102.4zM665.6 460.8H153.6a51.2 51.2 0 0 0 0 102.4h512a51.2 51.2 0 0 0 0-102.4zM460.8 768H153.6a51.2 51.2 0 0 0 0 102.4h307.2a51.2 51.2 0 0 0 0-102.4z" fill="#ffffff"></path></svg>
+        <svg class="hero-filter-svg" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg">
+          <path d="M388.4 529.7H147.2c-27.1 0-49.2-22.1-49.2-49.2V239.3c0-27.1 22.1-49.2 49.2-49.2h241.2c27.1 0 49.2 22.1 49.2 49.2v241.2c0 27.1-22 49.2-49.2 49.2zM147.2 236c-1.8 0-3.3 1.5-3.3 3.3v241.2c0 1.8 1.5 3.3 3.3 3.3h241.2c1.8 0 3.3-1.5 3.3-3.3V239.3c0-1.8-1.5-3.3-3.3-3.3H147.2zM388.4 912.9H147.2c-27.1 0-49.2-22.1-49.2-49.2V622.5c0-27.1 22.1-49.2 49.2-49.2h241.2c27.1 0 49.2 22.1 49.2 49.2v241.2c0 27.2-22 49.2-49.2 49.2zM147.2 619.3c-1.8 0-3.3 1.5-3.3 3.3v241.2c0 1.8 1.5 3.3 3.3 3.3h241.2c1.8 0 3.3-1.5 3.3-3.3V622.5c0-1.8-1.5-3.3-3.3-3.3l-241.2 0.1zM780.2 912.9H539c-27.1 0-49.2-22.1-49.2-49.2V622.5c0-27.1 22.1-49.2 49.2-49.2h241.2c27.1 0 49.2 22.1 49.2 49.2v241.2c0 27.2-22.1 49.2-49.2 49.2zM539 619.3c-1.8 0-3.3 1.5-3.3 3.3v241.2c0 1.8 1.5 3.3 3.3 3.3h241.2c1.8 0 3.3-1.5 3.3-3.3V622.5c0-1.8-1.5-3.3-3.3-3.3l-241.2 0.1z" fill="#F9C73D"></path>
+          <path d="M691.8 498.2l-170-169.9c-10.2-10.2-10.2-26.8 0-37l169.9-169.9c10.2-10.2 26.8-10.2 37 0l169.9 169.9c10.2 10.2 10.2 26.8 0 37L728.7 498.2c-10.1 10.2-26.8 10.2-36.9 0z" fill="#FFEABB"></path>
+          <path d="M710.3 529.6c-12.8 0-25.5-4.9-35.3-14.6L505.1 345.1c-19.4-19.4-19.4-51.1 0-70.5l169.9-170c19.4-19.4 51.1-19.4 70.5 0l169.9 169.9c19.4 19.4 19.4 51.1 0 70.5L745.5 515c-9.7 9.7-22.5 14.6-35.2 14.6z m0-392.1c-0.6 0-1.3 0.2-1.7 0.7l-170 169.9c-0.9 0.9-0.9 2.5 0 3.4l169.9 169.9c0.6 0.6 1.2 0.7 1.7 0.7s1.1-0.1 1.7-0.7l169.9-169.9c0.9-0.9 0.9-2.5 0-3.4L712 138.2c-0.5-0.5-1.1-0.7-1.7-0.7z" fill="#F9C73D"></path>
+        </svg>
       </div>
     </div>
 
-    <!-- 列表滚动区：仅在 banner 之下滚动，不滚到页面顶部 -->
-    <div ref="scrollRef" class="list-scroll" @scroll="onScroll">
+    <!-- 列表区：和账户页一样整页自然滚动，不再用内部滚动容器 -->
+    <div class="list-scroll" :class="{ 'mask-on': swipeMaskOn }">
     <div v-if="visibleBlocks.length" class="month-list">
       <div class="month-block" v-for="(mb, mi) in visibleBlocks" :key="mb.key" :data-year="mb.year">
         <div class="year-bar" v-if="mi === 0 || mb.year !== visibleBlocks[mi - 1].year" @click="toggleYear(mb.year)">
@@ -54,7 +62,8 @@
           </div>
           <div v-show="!foldMonths[mb.key]">
           <div class="day-block" v-for="d in mb.days" :key="d.date">
-            <van-swipe-cell v-for="(r, i) in d.items" :key="r.id">
+            <div class="cell-wrap" v-for="(r, i) in d.items" :key="r.id">
+            <van-swipe-cell>
               <div class="flow-row" @click="edit(r)">
                 <div class="date-col" v-if="i === 0">
                   <div class="d-day">{{ dayOf(d.date) }}</div>
@@ -81,6 +90,8 @@
               </div>
               <template #right><div class="del" @click="remove(r)">删除</div></template>
             </van-swipe-cell>
+            <div class="cell-mask"></div>
+            </div>
           </div>
           </div>
         </div>
@@ -139,7 +150,7 @@
 </template>
 
 <script setup>
-import { ref, shallowRef, computed, watch, onMounted, onActivated, onUnmounted, nextTick } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted, onActivated, onDeactivated, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
 import { useStore } from '../store'
@@ -150,8 +161,14 @@ import FlipNumber from '../components/FlipNumber.vue'
 import { memberName } from '../utils/members'
 import { readCacheAsync, writeCacheAsync } from '../utils/cache'
 import { mergePending, revokePending } from '../utils/offlineSync'
+import { setPendingRecord } from '../utils/pendingEdit'
+import { afterNav } from '../utils/afterNav'
 import { transferIconUrl } from '../utils/categoryIconMap'
 import { iconTheme } from '../utils/theme'
+import { createEdgeBackGuard } from '../utils/edgeBack'
+
+// iOS 左边缘右滑返回穿透保护：避免满屏 swipe-cell 吞掉系统返回手势
+const edge = createEdgeBackGuard()
 
 const store = useStore()
 const route = useRoute()
@@ -192,8 +209,9 @@ const keyword = ref('')
 const MONTH_PAGE = 1
 const visibleMonths = ref(MONTH_PAGE)
 const sentinelRef = ref(null)
-const scrollRef = ref(null)
 let io = null
+// 滚动容器是 #app（body 锁高做 flex，整页滚动移到 #app 内部）
+const pageScroller = () => document.querySelector('#app')
 
 const catFilter = ref('all')
 const accountFilter = ref('all')
@@ -350,16 +368,40 @@ const monthBlocks = computed(() => {
     }))
 })
 
-// 按月份裁剪：默认只渲染最近 1 个月，滚动到底再逐月增加（汇总仍基于全量 filtered）
-const visibleBlocks = computed(() => monthBlocks.value.slice(0, visibleMonths.value))
-const hasMore = computed(() => visibleMonths.value < monthBlocks.value.length)
+// 首屏渲染预算：按「天」裁剪，默认只渲染最近 6 天，滚到底再逐批追加。
+// 之前按整月裁剪，遇到记账密集的月份（上百条）首次挂载要创建几千个节点，
+// 点「流水」会卡 200ms 以上；改成天数预算后首屏节点量降一个数量级，
+// 汇总数字仍然基于全量 filtered 计算，不受裁剪影响。
+const DAY_PAGE = 6
+const visibleDays = ref(DAY_PAGE)
+
+// 折叠的年份不参与预算（它们的日期行本来就不渲染，计入会导致哨兵反复空转）
+const totalDays = computed(() => monthBlocks.value.reduce(
+  (s, m) => (foldYears.value[m.year] ? s : s + m.days.length), 0))
+
+const visibleBlocks = computed(() => {
+  let budget = visibleDays.value
+  const out = []
+  for (const mb of monthBlocks.value) {
+    const folded = !!foldYears.value[mb.year]
+    if (budget <= 0 && !folded) break
+    const days = []
+    for (const d of mb.days) {
+      if (!folded) {
+        if (budget <= 0) break
+        budget--
+      }
+      days.push(d)
+    }
+    if (days.length) out.push({ ...mb, days })
+  }
+  return out
+})
+const hasMore = computed(() => visibleDays.value < totalDays.value)
 
 function loadMore() {
   if (!hasMore.value) return
-  let next = visibleMonths.value + MONTH_PAGE
-  // 跳过被折叠年份的月份：否则折叠后高度塌陷，哨兵反复进入视口逐月空转（列表空白+一直转）
-  while (next < monthBlocks.value.length && foldYears.value[monthBlocks.value[next - 1].year]) next++
-  visibleMonths.value = Math.min(next, monthBlocks.value.length)
+  visibleDays.value = Math.min(visibleDays.value + DAY_PAGE, totalDays.value)
 }
 // 哨兵元素一出现/重建就自动绑定滚动监听，离开则断开
 watch(sentinelRef, el => {
@@ -367,7 +409,7 @@ watch(sentinelRef, el => {
   if (!el || typeof IntersectionObserver === 'undefined') return
   io = new IntersectionObserver(entries => {
     if (entries[0] && entries[0].isIntersecting) loadMore()
-  }, { root: scrollRef.value || null, rootMargin: '80px' })
+  }, { root: pageScroller() || null, rootMargin: '80px' })
   io.observe(el)
 })
 
@@ -387,8 +429,17 @@ function toggleYear(y) {
   // foldYears[y] !== true 表示当前展开，点击后折叠；模板用 === false 判断展开
   foldYears.value = { ...foldYears.value, [y]: foldYears.value[y] !== true }
 }
+// 返回：有历史就回退（保留 iOS 手势/返回键的正确栈），深链直达才回首页。
+// 之前一律 push('/home') 会让历史越叠越深，手势返回时会退回流水页。
+function goBack() {
+  if (router.options.history.state.back) router.back()
+  else router.push('/home')
+}
 function edit(r) {
   if (r._local) return showToast('这笔还没上传，联网同步后可编辑')
+  rememberScroll()
+  // 把这条记录先交给记一笔页，让它滑入的首帧就是真实数据（不等接口回来再填）
+  setPendingRecord(r)
   router.push({ path: '/add', query: { id: r.id } })
 }
 async function remove(r) {
@@ -443,7 +494,8 @@ async function load(silent = false) {
   // 非静默刷新才把列表滚回顶部、更新 banner；静默刷新保留当前浏览位置
   if (!silent) {
     await nextTick()
-    if (scrollRef.value) scrollRef.value.scrollTop = 0
+    const sc = pageScroller()
+    if (sc) sc.scrollTop = 0
     updateActiveYear()
   }
   // activeYear 已确定，此刻 bannerSummary 为最终值，才放行数字组件直接就位（不再先显示 0）
@@ -451,13 +503,14 @@ async function load(silent = false) {
   bannerReady.value = true
 }
 
-// 滚动联动：banner 显示当前滚动容器顶部所在月份块的年份
+// 滚动联动：banner 显示当前视口顶部所在月份块的年份。
+// 整页 window 滚动后，sticky banner 底边就是内容区的「顶部」参照线。
 function updateActiveYear() {
   if (!isAllYears.value) { activeYear.value = ''; return }
-  const container = scrollRef.value
-  const blocks = container?.querySelectorAll('.month-block[data-year]')
+  const blocks = document.querySelectorAll('.flow-page .month-block[data-year]')
   if (!blocks || !blocks.length) return
-  const top = container.getBoundingClientRect().top
+  const heroEl = document.querySelector('.flow-page .hero')
+  const top = heroEl ? heroEl.getBoundingClientRect().bottom : 0
   let y = blocks[0].getAttribute('data-year')
   for (const b of blocks) {
     if (b.getBoundingClientRect().top <= top + 8) y = b.getAttribute('data-year')
@@ -504,49 +557,87 @@ onMounted(async () => {
   // 基础数据放后台加载，失败也不影响本页用缓存 + 待同步队列正常打开。
   if (!store.ready) store.loadBase().catch(() => {})
   refreshIfNeeded()
+  pageScroller()?.addEventListener('scroll', onScroll, { passive: true })
   window.addEventListener('ssj:pull', onRemotePull)
   window.addEventListener('ssj:synced', onRemotePull)
 })
-onActivated(() => { if (store.ready) refreshIfNeeded() })
+// 切走再回来时记住 #app 的 scrollTop，返回后静默重拉可能重建节点把位置清零，这里自己存一份还原。
+// 路由层（router/index.js）也按 fullPath 统一记忆，双重保险。
+let savedScrollTop = 0
+function rememberScroll() { savedScrollTop = pageScroller()?.scrollTop || 0 }
+function restoreScroll() {
+  const sc = pageScroller()
+  if (sc && savedScrollTop > 0) sc.scrollTop = savedScrollTop
+}
+onDeactivated(rememberScroll)
+
+// 进出「记一笔」时本页不会被 deactivate（常驻层是叠加在 MainLayout 上的），
+// 所以要在点击那一刻记一次，等返回动画播完再把位置放回去。
+watch(() => route.name, async (n, old) => {
+  if (old !== 'add' || n !== 'detail') return
+  afterNav(async () => {
+    restoreScroll()
+    if (store.ready) refreshIfNeeded()
+    await nextTick()
+    restoreScroll()
+  })
+})
+
+// 从其它顶层页面（分类/备注等）返回本页：同样要等转场结束再重算，
+// 否则重算成千条记录的分组会和位移抢同一帧，让返回动画起步就掉帧。
+onActivated(() => {
+  afterNav(async () => {
+    restoreScroll()
+    if (store.ready) refreshIfNeeded()
+    await nextTick()
+    restoreScroll()
+  })
+})
 onUnmounted(() => {
+  pageScroller()?.removeEventListener('scroll', onScroll)
   window.removeEventListener('ssj:pull', onRemotePull)
   window.removeEventListener('ssj:synced', onRemotePull)
 })
 </script>
 
 <style scoped>
-/* 页面固定铺满一屏（本页无底部 tab），列表内部独立滚动 */
+/* 和账户页一样：整页自然滚动，最小一屏高 + 底部留白给 tab，内容自然往下排 */
 .page.flow-page {
-  height: calc(100vh - env(safe-area-inset-bottom));
-  height: calc(100dvh - env(safe-area-inset-bottom));
-  min-height: 0;
-  padding-bottom: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-bottom: calc(20px + var(--sab));
   box-sizing: border-box;
 }
 
-/* 顶部橙红渐变 banner：固定不滚动（高度贴合文字，覆盖浏览器头部状态栏） */
+/* 顶部导航栏：纯白背景、深色文字，sticky 固定不动——绝不给它上渐变。
+   橙红渐变 banner 只在导航下方的数据区 .hero-sum，通栏全宽、无圆角。 */
 .hero {
-  position: relative; z-index: 20; flex: 0 0 auto;
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: 18px;
+  position: sticky; top: 0; z-index: 20;
+  padding-top: calc(env(safe-area-inset-top) + 10px);
+  padding-bottom: 0;
   box-sizing: border-box; overflow: hidden;
-  background: linear-gradient(135deg, #ff9a44 0%, #ff6b35 48%, #f0472d 100%);
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  color: #1a1a1a;
 }
-.navbar { position: relative; z-index: 2; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; color: #fff; font-size: 18px; }
-.nav-left, .nav-right { display: flex; align-items: center; min-width: 96px; }
+.navbar { position: relative; z-index: 2; height: 56px; display: flex; align-items: center; justify-content: flex-start; gap: 8px; padding: 0 14px; color: #1a1a1a; font-size: 16px; }
+.nav-left, .nav-right { display: flex; align-items: center; min-height: 44px; }
+.nav-left { min-width: 24px; width: 24px; position: relative; }
+.nav-left::before { content: ''; position: absolute; left: -12px; right: -12px; top: -12px; bottom: -12px; }
+.nav-left { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.nav-left:active .van-icon { opacity: .5; transform: scale(.9); }
+.nav-left .van-icon { font-size: 20px; transition: transform .1s ease, opacity .1s ease; }
 .nav-right { justify-content: flex-end; gap: 18px; }
-.nav-title { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 3px; cursor: pointer; }
-.hero-sum { position: relative; z-index: 2; padding: 2px 20px 0; color: #fff; }
+.nav-title { font-size: 16px; font-weight: 600; margin-right: auto; display: flex; align-items: center; gap: 3px; cursor: pointer; }
+/* 导航下方的通栏橙红渐变 banner：全宽、无圆角，结余/收支白色文字 */
+.hero-sum { position: relative; z-index: 2; margin: 0; padding: 10px 20px 16px; border-radius: 0; background: var(--primary-grad); color: #fff; }
 .hero-label { font-size: 13px; opacity: .92; }
 .hero-balance { font-size: 38px; font-weight: 600; letter-spacing: 0; line-height: 1.15; margin: 2px 0 6px; }
 .hero-sub { font-size: 12px; opacity: .98; display: flex; align-items: center; gap: 10px; }
 .hero-sub b { font-weight: 600; }
-.hero-sub i { display: inline-block; width: 1px; height: 11px; background: rgba(255,255,255,.5); margin: 0 2px; }
-.income-txt { color: #fff3e8; }
-.expense-txt { color: #d8fff0; }
+.hero-sub i { display: inline-block; width: 1px; height: 11px; background: rgba(255,255,255,.45); margin: 0 2px; }
+/* 渐变底上收入/支出用纯白，靠文字与正负号区分，不用绿/红 */
+.income-txt, .expense-txt { color: #fff; }
 /* 数据就绪前的占位：只占位置、完全透明不可见，避免先显示 0 造成跳变 */
 .hero-ph { display: inline-block; height: 1em; vertical-align: middle; background: transparent; }
 .hero-ph-lg { width: 5.6em; }
@@ -569,8 +660,20 @@ onUnmounted(() => {
 
 /* 月份分组 */
 /* 列表独立滚动区：仅占 banner 之下的剩余高度 */
-.list-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+.list-scroll { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 .list-scroll::-webkit-scrollbar { display: none; }
+/* 行级左侧「白色→透明」渐变遮罩：常驻在每条流水行(日行)左侧，
+   柔化行内容左边缘；年份条/月份头不在 .cell-wrap 内，天然无遮罩。
+   pointer-events:none 不拦截触摸，右滑返回与左滑删除都不受影响。 */
+.cell-wrap { position: relative; }
+.cell-mask {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 84px;
+  background: linear-gradient(to right, #fff 0%, #fff 22%, rgba(255, 255, 255, .82) 48%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+  z-index: 15;
+}
 .month-list { margin-top: 0; }
 /* 长列表渲染优化：跳过屏幕外月份块的布局与绘制，首屏更快 */
 .month-block { content-visibility: auto; contain-intrinsic-size: auto 320px; }
@@ -579,6 +682,11 @@ onUnmounted(() => {
 .mh-bal { flex: 1; text-align: right; margin-right: 8px; }
 .month-head .van-icon { color: #aaa; }
 .day-block { background: #fff; }
+/* 只把 swipe-cell(手势控制区)本身向右挪 30px，背景色(.day-block 白底)铺满不动。
+   width:auto 自动补偿外边距，右边界仍贴最右、删除按钮位置不变；
+   边缘起手的 target 落在 .day-block 白底而非 swipe-cell，
+   swipe-cell 收不到 touch 就不 preventDefault，iOS 系统边缘返回手势得以触发。 */
+.day-block :deep(.van-swipe-cell) { margin-left: 30px; }
 .flow-row { display: flex; align-items: center; padding: 14px 14px; gap: 10px; background: #fff; }
 .flow-row:active { background: #f7f8fa; }
 .date-col { width: 36px; flex-shrink: 0; text-align: center; }

@@ -1,7 +1,7 @@
 <template>
   <div class="page chart-page" :style="{ '--accent': def.color }">
     <!-- 顶部导航 -->
-    <van-nav-bar :title="def.title" left-text="返回" left-arrow @click-left="$router.back()" @click-right="filterShow = true">
+    <van-nav-bar :title="def.title" left-arrow @click-left="$router.back()" @click-right="filterShow = true">
       <template #right><van-icon name="ellipsis" size="20" @click="filterShow = true" /></template>
     </van-nav-bar>
 
@@ -10,20 +10,27 @@
       <van-icon name="bars" /> {{ def.title }} <van-icon name="arrow-down" class="cs-arrow" />
     </div>
 
-    <!-- 立体饼图 / 条形图 -->
+    <!-- 实心饼图 / 条形图 -->
     <div class="chart-stage">
       <div v-show="!isEmpty" ref="chartRef" class="chart-canvas"></div>
-      <van-empty v-if="isEmpty" image-size="80px" description="该条件下暂无数据" />
-
-      <!-- 选中项信息（饼图模式） -->
-      <div v-if="!isEmpty && viewMode === 'pie' && selected" class="picked-info">
-        <div class="picked-pct">{{ pctOf(selected.total) }}%</div>
-        <div class="picked-row">
-          <span class="picked-name">{{ selected.name }}</span>
-          <span class="picked-amt">¥{{ fmt(selected.total) }}</span>
-          <van-icon name="arrow" class="picked-arrow" />
-        </div>
+      <!-- 中心磨砂玻璃圆：白色半透明 + backdrop-filter 真模糊，覆盖在饼图中心 -->
+      <div v-if="!isEmpty && viewMode === 'pie'" class="pie-center-glass">
+        <span class="pcg-label">总计</span>
+        <span class="pcg-amount">{{ fmt(total) }}</span>
       </div>
+      <van-empty v-if="isEmpty" image-size="80px" description="该条件下暂无数据" />
+    </div>
+
+    <!-- 饼图下方的选中分类详情：三角指针 + 胶囊占比 + 明细行（参考图样式） -->
+    <div v-if="!isEmpty && viewMode === 'pie' && selected" class="pie-detail">
+      <div class="pd-pointer" :style="{ borderTopColor: selectedColor }"></div>
+      <div class="pd-capsule" :style="{ color: selectedColor, borderColor: selectedColor }">{{ pctOf(selected.total) }}%</div>
+      <div class="pd-row" @click="cycleDetail">
+        <span class="pd-name">{{ selected.name }}</span>
+        <span class="pd-amt">¥{{ fmt(selected.total) }}</span>
+        <van-icon name="arrow" class="pd-arrow" />
+      </div>
+      <div class="pd-hint">按住饼图旋转，对准箭头查看分类</div>
     </div>
 
     <!-- 底部分类明细（条形图模式） -->
@@ -132,7 +139,7 @@
             <div class="fd-value">{{ pickLabel('member') }}<van-icon name="arrow" /></div>
           </div>
           <div class="fd-row" @click="openPick('project')">
-            <div class="fd-label"><van-icon name="cluster-o" class="fi-project" />项目</div>
+            <div class="fd-label"><van-icon name="folder-o" class="fi-project" />项目</div>
             <div class="fd-value">{{ pickLabel('project') }}<van-icon name="arrow" /></div>
           </div>
           <div class="fd-row" @click="openPick('merchant')">
@@ -175,9 +182,10 @@ import * as echarts from 'echarts'
 import { showToast } from 'vant'
 import { useStore } from '../store'
 import { api } from '../api'
+import { readCache, writeCache, readCacheAsync, writeCacheAsync } from '../utils/cache'
 import {
   chartDefs as defs, chartTabs, chartsByTab, chartIcon,
-  PIE_COLORS, shade, RANGE_OPTIONS, rangeLabel
+  PIE_COLORS, RANGE_OPTIONS, rangeLabel, localGroup
 } from '../utils/statsCharts'
 import { memberName } from '../utils/members'
 
@@ -194,10 +202,101 @@ const selectedName = ref('')
 const rows = ref([])
 const isEmpty = computed(() => !rows.value.length)
 const total = computed(() => rows.value.reduce((s, r) => s + r.total, 0))
-const selected = computed(() => rows.value.find(r => r.name === selectedName.value) || rows.value[0] || null)
+// 饼图扇区数据：分类过多时把长尾合并成「其他」，避免几十条细碎扇区挤成一团；
+// 明细仍完整保留在 rows 里供图例与金额展示。
+const PIE_MAX = 10
+const pieRows = computed(() => {
+  const all = rows.value
+  if (all.length <= PIE_MAX + 1) return all
+  const head = all.slice(0, PIE_MAX)
+  const rest = all.slice(PIE_MAX)
+  return [...head, { name: `其他 ${rest.length} 项`, total: rest.reduce((s, r) => s + r.total, 0) }]
+})
+const selected = computed(() => pieRows.value.find(r => r.name === selectedName.value) || null)
 
 const fmt = n => Number(n || 0).toFixed(2)
 const pctOf = v => total.value ? (v / total.value * 100).toFixed(2) : '0.00'
+const pieColor = i => PIE_COLORS[i % PIE_COLORS.length]
+// 选中项序号 / 颜色（供下方指针、胶囊、明细行与饼图联动）
+const selectedIdx = computed(() => selected.value ? pieRows.value.findIndex(r => r.name === selected.value.name) : 0)
+const selectedColor = computed(() => pieColor(Math.max(0, selectedIdx.value)))
+// ---- 转盘交互：按住饼图旋转，正下方指针（90°）对准哪个扇区就显示该分类 ----
+let rotation = 0      // 用户拖动累计的角度偏移（度）
+let dragging = null   // 当前拖动状态
+const norm360 = a => ((a % 360) + 360) % 360
+// 让第 0 项（最大分类）中心正对指针的基准起始角
+function baseAngleFor(pie) {
+  if (!pie.length) return 90
+  const t = pie.reduce((s, r) => s + r.total, 0) || 1
+  return pie[0].total / t * 360 / 2 - 90
+}
+// 指针命中的扇区序号：echarts 绘制起始角 = -startAngle，扇区按数据顺序顺时针排列
+function sectorAtPointer(startAngle, pie) {
+  const t = pie.reduce((s, r) => s + r.total, 0) || 1
+  const pointer = 90 // 正下方（canvas 坐标 y 向下）
+  let acc = -startAngle
+  for (let i = 0; i < pie.length; i++) {
+    const sweep = pie[i].total / t * 360
+    const a0 = norm360(acc)
+    const a1 = a0 + sweep
+    const hit = a1 >= 360 ? (pointer >= a0 || pointer < a1 - 360) : (pointer >= a0 && pointer < a1)
+    if (hit) return i
+    acc += sweep
+  }
+  return 0
+}
+// 让第 i 项中心对准指针所需的 rotation
+function rotationForIndex(i) {
+  const pie = pieRows.value
+  if (!pie.length) return 0
+  const t = pie.reduce((s, r) => s + r.total, 0) || 1
+  const sweep0 = pie[0].total / t * 360
+  let before = 0
+  for (let k = 0; k < i; k++) before += pie[k].total / t * 360
+  return before + pie[i].total / t * 360 / 2 - sweep0 / 2
+}
+// 应用旋转：只更新起始角（增量、关动画，保证跟手），并同步指针命中的分类
+function applyRotation() {
+  if (!chart || viewMode.value !== 'pie' || !pieRows.value.length) return
+  const base = baseAngleFor(pieRows.value)
+  chart.setOption({ animation: false, series: [{ startAngle: base + rotation }] })
+  const idx = sectorAtPointer(base + rotation, pieRows.value)
+  const name = pieRows.value[idx]?.name
+  if (name && name !== selectedName.value) selectedName.value = name
+}
+function pointerAngle(e) {
+  const rect = chartRef.value.getBoundingClientRect()
+  const cx = rect.left + rect.width / 2
+  const cy = rect.top + rect.height / 2
+  return Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI
+}
+function onPiePointerDown(e) {
+  if (viewMode.value !== 'pie' || isEmpty.value || !chartRef.value) return
+  dragging = { id: e.pointerId, start: pointerAngle(e), from: rotation }
+  try { chartRef.value.setPointerCapture(e.pointerId) } catch (_) {}
+}
+function onPiePointerMove(e) {
+  if (!dragging || dragging.id !== e.pointerId) return
+  let d = pointerAngle(e) - dragging.start
+  if (d > 180) d -= 360
+  if (d < -180) d += 360
+  rotation = dragging.from - d // 手指顺时针拖，扇区跟着顺时针转
+  applyRotation()
+}
+function onPiePointerUp(e) {
+  if (!dragging || dragging.id !== e.pointerId) return
+  try { chartRef.value?.releasePointerCapture(e.pointerId) } catch (_) {}
+  dragging = null
+}
+// 点击明细行：循环切到下一个分类，同时把转盘转到该分类对准指针
+function cycleDetail() {
+  if (!pieRows.value.length) return
+  const i = Math.max(0, selectedIdx.value)
+  const next = (i + 1) % pieRows.value.length
+  rotation = rotationForIndex(next)
+  selectedName.value = pieRows.value[next].name
+  applyRotation()
+}
 
 // 弹窗状态
 const timeShow = ref(false)
@@ -250,6 +349,9 @@ function pickOptionsFor(type) {
 // 图表实例
 const chartRef = ref(null)
 let chart = null
+// 当前已渲染的图表类型：类型切换必须 notMerge 清掉另一类的 xAxis/graphic 残留，
+// 同类型内（点扇区选中）走增量更新，避免整图重建重放动画导致卡顿。
+let chartKind = ''
 
 function queryParams() {
   const p = { range: range.value }
@@ -269,23 +371,67 @@ function queryParams() {
   return p
 }
 
+const optionsCacheKey = computed(() => `stats_options_${store.currentBookId}`)
+
 async function loadOptions() {
   try {
     const [fo, members] = await Promise.all([
       api.stats.filterOptions({ book_id: store.currentBookId || undefined }),
       store.members?.length ? Promise.resolve(store.members) : api.books.members(store.currentBookId).catch(() => [])
     ])
-    options.value = {
+    const next = {
       categories: fo.categories || [], accounts: fo.accounts || [],
       merchants: fo.merchants || [], projects: fo.projects || [],
       members: (members || []).map(m => ({ id: m.id, name: memberName(m) }))
     }
-  } catch (e) { /* 筛选项加载失败不阻断图表 */ }
+    options.value = next
+    writeCache(optionsCacheKey.value, next)
+  } catch (e) {
+    // 离线：读缓存的筛选项，保证筛选面板可用
+    const cached = readCache(optionsCacheKey.value)
+    if (cached) options.value = cached
+  }
+}
+
+// 图表数据缓存 key：账本 + 图表 + 时间范围 + 全部筛选条件
+const rowsCacheKey = computed(() => {
+  const f = filter.value
+  const parts = [
+    store.currentBookId, chartKey.value, range.value,
+    startDate.value, endDate.value,
+    f.category_id, f.account, f.member_id, f.project, f.merchant, f.min_amount, f.max_amount, f.note
+  ]
+  return 'stats_rows_' + parts.map(x => String(x ?? '')).join('|')
+})
+
+// 全量流水明细缓存 key（供离线本地聚合，覆盖所有筛选/时间范围组合）
+const rawCacheKey = computed(() => `stats_raw_${store.currentBookId}`)
+
+// 在线时用全量明细填一份本地缓存：仅 group 类图表需要，供离线切换筛选时本地聚合
+async function cacheRawRecords() {
+  const d = def.value
+  if (d.source && d.source !== 'budget' && d.source !== 'memberFlow') return
+  try {
+    const params = { with_transfers: 0 }
+    if (store.currentBookId) params.book_id = store.currentBookId
+    const list = await api.records.list(params)
+    // 解包成纯数组（ref 的响应式 Proxy 无法被结构化克隆）
+    await writeCacheAsync(rawCacheKey.value, JSON.parse(JSON.stringify(list)))
+  } catch (e) { /* 明细缓存失败不影响主流程 */ }
+}
+
+function applyRows(data) {
+  rows.value = data.slice().sort((a, b) => b.total - a.total)
+  // 数据变化时转盘归零：最大分类正对指针（和参考图一致）
+  rotation = 0
+  if (!selectedName.value || !pieRows.value.find(r => r.name === selectedName.value)) {
+    selectedName.value = pieRows.value[0]?.name || ''
+  }
 }
 
 async function load() {
+  const d = def.value
   try {
-    const d = def.value
     let data = []
     if (d.source === 'accounts') {
       const list = await api.accounts.list({ book_id: store.currentBookId || undefined })
@@ -304,24 +450,51 @@ async function load() {
     } else {
       data = await api.stats.group({ type: d.type, group_by: d.groupBy, ...queryParams() })
     }
-    rows.value = data.sort((a, b) => b.total - a.total)
-    if (!rows.value.find(r => r.name === selectedName.value)) selectedName.value = rows.value[0]?.name || ''
+    applyRows(data)
+    // 先解包成纯数组再缓存：ref 的响应式 Proxy 无法被结构化克隆，落 localStorage 用同步写入更稳
+    writeCache(rowsCacheKey.value, JSON.parse(JSON.stringify(rows.value)))
+    // 顺带缓存全量明细，供离线切换筛选时本地聚合（异步、不阻塞图表呈现）
+    cacheRawRecords()
     await nextTick()
     renderChart()
-  } catch (e) { showToast(e.message || '加载失败') }
+  } catch (e) {
+    // 离线/弱网：优先用全量明细本地聚合（筛选真正生效），其次读该视图缓存，都不弹网络错误
+    let done = false
+    const defForGroup = (d.source === 'budget') ? { type: 'expense', groupBy: 'category' }
+      : (d.source === 'memberFlow') ? { type: 'income', groupBy: 'member' }
+      : (!d.source ? d : null)
+    if (defForGroup) {
+      const raw = await readCacheAsync(rawCacheKey.value)
+      if (Array.isArray(raw) && raw.length) {
+        applyRows(localGroup(raw, defForGroup, queryParams()))
+        done = true
+      }
+    }
+    if (!done) {
+      const cached = readCache(rowsCacheKey.value)
+      if (Array.isArray(cached)) { applyRows(cached); done = true }
+    }
+    if (done) {
+      await nextTick()
+      renderChart()
+    } else {
+      // 无缓存可用时维持上一次数据，给出离线提示而非“网络错误”
+      if (!rows.value.length) showToast('离线暂无缓存，联网后重试')
+    }
+  }
 }
 
 function renderChart() {
   if (!chartRef.value || isEmpty.value) return
   if (!chart || chart.getDom() !== chartRef.value) {
     if (chart) chart.dispose()
+    chartKind = ''
     chart = echarts.init(chartRef.value)
-    chart.on('click', p => {
-      if (p.name) { selectedName.value = p.name; if (viewMode.value === 'pie') renderChart() }
-    })
   }
   const data = rows.value
   if (viewMode.value === 'bar') {
+    const kindChanged = chartKind !== 'bar'
+    chartKind = 'bar'
     chart.setOption({
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: p => `${p[0].name}<br/>¥${fmt(p[0].value)}` },
       grid: { left: 6, right: 16, top: 12, bottom: 6, containLabel: true },
@@ -332,46 +505,57 @@ function renderChart() {
         data: data.map((r, i) => ({ value: r.total, itemStyle: { color: PIE_COLORS[i % PIE_COLORS.length], borderRadius: [0, 5, 5, 0] } })).reverse(),
         label: { show: true, position: 'right', fontSize: 10, color: '#999', formatter: p => '¥' + fmt(p.value) }
       }]
-    }, true)
+    }, kindChanged)
     return
   }
 
-  // 立体饼图：底层深色做厚度 + 表层渐变
-  const mkData = dark => data.map((r, i) => {
-    const c = PIE_COLORS[i % PIE_COLORS.length]
-    return {
-      name: r.name, value: r.total, selected: r.name === selected.value?.name,
-      itemStyle: {
-        color: dark ? shade(c, -0.28) : new echarts.graphic.LinearGradient(0, 0, 1, 1, [
-          { offset: 0, color: shade(c, 0.28) }, { offset: 1, color: c }
-        ]),
-        borderColor: dark ? shade(c, -0.35) : 'rgba(255,255,255,.55)',
-        borderWidth: dark ? 0 : 1.5
-      }
-    }
-  })
-  // 立体效果：底层深色饼图整体下移（约6px）形成厚度，表层为渐变亮色
+  // 实心饼图：同色系线性渐变（无立体果冻高光）、无白描边；
+  // 中心磨砂玻璃圆与「总计/金额」用 DOM 覆盖层实现（Canvas 无法 backdrop-filter）。
+  const pieData = pieRows.value
+  const kindChanged = chartKind !== 'pie'
+  chartKind = 'pie'
+  // 鲜亮线性渐变：先增强饱和度让颜色更纯，再提亮亮端、暗端保持本色不发灰
+  const flatColor = (hex) => {
+    const c = hex.replace('#', '')
+    let r = parseInt(c.slice(0, 2), 16), g = parseInt(c.slice(2, 4), 16), b = parseInt(c.slice(4, 6), 16)
+    // 增强饱和度：把每个通道推离灰度均值，颜色更鲜艳
+    const gray = (r + g + b) / 3
+    const sat = (v) => Math.max(0, Math.min(255, Math.round(gray + (v - gray) * 1.32)))
+    r = sat(r); g = sat(g); b = sat(b)
+    const light = (v) => Math.min(255, Math.round(v + (255 - v) * 0.26))
+    return new echarts.graphic.LinearGradient(0, 0, 0.4, 1, [
+      { offset: 0, color: `rgb(${light(r)},${light(g)},${light(b)})` },
+      { offset: 1, color: `rgb(${r},${g},${b})` }
+    ])
+  }
   chart.setOption({
-    tooltip: { trigger: 'item', formatter: p => `${p.name}<br/>¥${fmt(p.value)} (${pctOf(p.value)}%)` },
-    graphic: [{
-      type: 'circle', shape: { r: 58 },
-      style: { fill: 'rgba(255,255,255,.92)', shadowBlur: 12, shadowColor: 'rgba(0,0,0,.12)' },
-      z: 10, silent: true, left: 'center', top: 'middle'
-    }, {
-      type: 'text', left: 'center', top: '43%',
-      style: { text: '总计', fill: '#999', fontSize: 11, align: 'center' }, z: 11, silent: true
-    }, {
-      type: 'text', left: 'center', top: '52%',
-      style: { text: '¥' + fmt(total.value), fill: '#333', fontSize: 16, fontWeight: 'bold', align: 'center' }, z: 11, silent: true
-    }],
-    series: [
-      { type: 'pie', radius: ['34%', '66%'], center: ['50%', '52%'], silent: true, z: 1,
-        label: { show: false }, labelLine: { show: false }, data: mkData(true) },
-      { type: 'pie', radius: ['34%', '66%'], center: ['50%', '50%'], z: 3,
-        avoidLabelOverlap: true, label: { show: false }, labelLine: { show: false },
-        emphasis: { scale: true, scaleSize: 6 }, data: mkData(false) }
-    ]
-  }, true)
+    animation: true,
+    animationDuration: 360,
+    animationDurationUpdate: 240,
+    animationEasingUpdate: 'cubicOut',
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: 'rgba(255,255,255,.97)', borderColor: '#eee', borderWidth: 1,
+      padding: [9, 13], textStyle: { color: '#333', fontSize: 12 },
+      extraCssText: 'box-shadow:0 8px 28px rgba(0,0,0,.12);border-radius:12px;',
+      formatter: p => `<div style="font-weight:600;margin-bottom:3px">${p.name}</div>¥${fmt(p.value)} · ${pctOf(p.value)}%`
+    },
+    series: [{
+      type: 'pie',
+      radius: '86%', center: ['50%', '50%'], startAngle: baseAngleFor(pieData) + rotation,
+      minAngle: pieData.length > 1 ? 2 : 0,
+      avoidLabelOverlap: true, label: { show: false }, labelLine: { show: false },
+      selectedMode: false,
+      // 去掉白色描边：无间隙纯色拼接；去掉所有 shadowBlur（手机端最耗性能）
+      itemStyle: { borderColor: 'transparent', borderWidth: 0, borderRadius: 0 },
+      // 点击分类不放大扇区
+      emphasis: { scale: false },
+      data: pieData.map((r, i) => ({
+        name: r.name, value: r.total,
+        itemStyle: { color: flatColor(pieColor(i)) }
+      }))
+    }]
+  }, kindChanged)
 }
 
 // 交互
@@ -429,38 +613,78 @@ function resetFilter() {
 }
 
 function onResize() { chart?.resize() }
-watch(viewMode, () => nextTick(renderChart))
+watch(viewMode, () => {
+  if (viewMode.value === 'pie') rotation = 0
+  nextTick(renderChart)
+})
 watch([() => store.currentBookId], () => load())
 function refreshIfNeeded() { load() }
+// 服务端数据变更（其它端增删改/本端补传）后重算统计
+function onRemotePull() { if (store.ready || store.currentBookId) load() }
 onMounted(async () => {
-  if (!store.ready) await store.loadBase().catch(() => {})
+  // 不 await：离线/弱网下 loadBase 卡在网络错误会挡住统计页用缓存渲染
+  if (!store.ready) store.loadBase().catch(() => {})
   panelTab.value = def.value.tab
-  await loadOptions()
+  loadOptions()
   load()
   window.addEventListener('resize', onResize)
+  window.addEventListener('ssj:pull', onRemotePull)
+  window.addEventListener('ssj:synced', onRemotePull)
+  // 转盘：在饼图画布上按住旋转（touch-action:none 防止拖动时页面跟着滚）
+  const el = chartRef.value
+  if (el) {
+    el.addEventListener('pointerdown', onPiePointerDown)
+    el.addEventListener('pointermove', onPiePointerMove)
+    el.addEventListener('pointerup', onPiePointerUp)
+    el.addEventListener('pointercancel', onPiePointerUp)
+  }
 })
 onActivated(() => { nextTick(onResize) })
-onUnmounted(() => { window.removeEventListener('resize', onResize); chart?.dispose() })
+onUnmounted(() => {
+  window.removeEventListener('resize', onResize)
+  window.removeEventListener('ssj:pull', onRemotePull)
+  window.removeEventListener('ssj:synced', onRemotePull)
+  const el = chartRef.value
+  if (el) {
+    el.removeEventListener('pointerdown', onPiePointerDown)
+    el.removeEventListener('pointermove', onPiePointerMove)
+    el.removeEventListener('pointerup', onPiePointerUp)
+    el.removeEventListener('pointercancel', onPiePointerUp)
+  }
+  chart?.dispose()
+})
 </script>
 
 <style scoped>
 .chart-page { background: #f5f6f8; min-height: 100vh; min-height: 100dvh; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
-:deep(.van-nav-bar) { background: #fff; }
+:deep(.van-nav-bar) { background: #fff; --van-nav-bar-text-color: #1a1a1a; --van-nav-bar-title-text-color: #1a1a1a; --van-nav-bar-icon-color: #1a1a1a; }
 
 .chart-switch { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 10px auto 0; padding: 6px 16px; width: fit-content; background: #fff; border-radius: 18px; font-size: 13px; font-weight: 600; color: var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,.05); }
 .chart-switch .cs-arrow { color: #bbb; font-size: 12px; }
 
-.chart-stage { position: relative; margin: 12px; border-radius: 16px; background: #fff; min-height: 360px; box-shadow: 0 4px 18px rgba(0,0,0,.05); overflow: hidden; display: flex; align-items: center; justify-content: center; flex-direction: column; }
-.chart-canvas { width: 100%; height: 340px; }
+/* 饼图区不要白底卡片：背景透明、无阴影，饼图直接落在页面上 */
+.chart-stage { position: relative; margin: 12px 12px 0; border-radius: 18px; background: transparent; min-height: 460px; box-shadow: none; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+.chart-canvas { width: 100%; height: 460px; touch-action: none; cursor: grab; }
+.chart-canvas:active { cursor: grabbing; }
 :deep(.van-empty) { padding: 60px 0; }
+/* 中心磨砂玻璃圆：白色半透明 + backdrop-filter 真模糊；绝对定位覆盖在饼图正中 */
+.pie-center-glass { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 132px; height: 132px; border-radius: 50%; background: rgba(255,255,255,.55); -webkit-backdrop-filter: blur(10px) saturate(1.3); backdrop-filter: blur(10px) saturate(1.3); border: 1px solid rgba(255,255,255,.7); box-shadow: 0 4px 20px rgba(0,0,0,.08), inset 0 1px 1px rgba(255,255,255,.9); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; pointer-events: none; z-index: 5; }
+.pcg-label { font-size: 12px; color: rgba(255,255,255,.9); text-shadow: 0 1px 3px rgba(0,0,0,.18); }
+.pcg-amount { font-size: 19px; font-weight: 700; color: #fff; letter-spacing: .3px; text-shadow: 0 1px 4px rgba(0,0,0,.2); }
 
-.picked-info { display: flex; flex-direction: column; align-items: center; padding: 0 0 18px; }
-.picked-pct { padding: 3px 14px; border: 1px solid var(--accent); color: var(--accent); border-radius: 14px; font-size: 13px; font-weight: 700; }
-.picked-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; }
-.picked-name { color: #333; font-weight: 600; }
-.picked-amt { color: var(--accent); font-weight: 700; }
-.picked-arrow { color: #ccc; font-size: 13px; }
-
+/* 饼图下方选中分类详情（参考图样式） */
+.pie-detail { display: flex; flex-direction: column; align-items: center; margin-top: 2px; }
+/* 指向饼图的三角指针 */
+.pd-pointer { width: 0; height: 0; border-left: 11px solid transparent; border-right: 11px solid transparent; border-top: 16px solid #ff5e3a; filter: drop-shadow(0 3px 4px rgba(255,94,58,.35)); margin-bottom: 10px; }
+/* 占比胶囊 */
+.pd-capsule { padding: 5px 16px; border: 1.5px solid #ff5e3a; border-radius: 20px; font-size: 14px; font-weight: 700; line-height: 1.2; background: #fff; }
+/* 明细行 */
+.pd-row { display: flex; align-items: center; gap: 8px; margin-top: 20px; padding: 4px 10px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.pd-row:active { opacity: .6; }
+.pd-name { font-size: 15px; font-weight: 600; color: #2b2f36; }
+.pd-amt { font-size: 15px; font-weight: 600; color: #ff5e3a; }
+.pd-arrow { font-size: 13px; color: #c8ccd2; }
+.pd-hint { font-size: 11px; color: #b8bcc4; margin-top: 10px; }
 .card { background: #fff; border-radius: 14px; margin: 12px; padding: 14px; }
 .bl-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
 .bl-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px; }

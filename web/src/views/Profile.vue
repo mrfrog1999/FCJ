@@ -2,8 +2,8 @@
   <div class="page">
     <div class="gradient-card head">
       <div class="prof-nav">
-        <van-icon name="arrow-left" class="back-ico" @click="$router.push('/home')" />
-        <span>我的</span>
+        <div class="nav-left" @click="goBack"><van-icon name="arrow-left" /></div>
+        <span class="prof-title">设置</span>
       </div>
       <div class="head-user" @click="openProfile">
         <UserAvatar :avatar="store.user?.avatar" :name="store.user?.nickname" :color="memberColor(store.user?.id)" :size="58" />
@@ -27,7 +27,7 @@
       <van-cell title="当前账本" :value="store.currentBook?.name || '-'" />
       <van-cell title="离线同步" icon="replay" :value="syncText" is-link @click="syncNow" />
       <van-cell title="备份与恢复" icon="down" is-link label="导出 / 导入 XLS 备份" @click="$router.push('/backup')" />
-      <van-cell title="版本" value="v1.0.0" />
+      <van-cell title="版本" :value="'v1.0.0 · ' + BUILD_AT" />
     </van-cell-group>
 
     <div class="logout" @click="logout">退出登录</div>
@@ -68,7 +68,7 @@
         <van-field v-model="form.username" label="登录账号" placeholder="登录名（至少2位）" />
         <div class="avatar-edit" @click="pickImage">
           <UserAvatar :avatar="form.avatar" :name="form.nickname" :color="memberColor(store.user?.id)" :size="72" />
-          <div class="avatar-tip"><van-icon name="photograph" /> 点击更换头像</div>
+          <div class="avatar-tip"><van-icon name="camera-o" /> 点击更换头像</div>
         </div>
         <input ref="fileInput" type="file" accept="image/*" class="hidden-file" @change="onFile" />
         <div class="preset-label">或选择头像颜色</div>
@@ -98,9 +98,20 @@ import { fileToAvatarDataUrl, PRESET_COLORS } from '../utils/avatar'
 import { iconTheme, setIconTheme, THEME_STANDARD, THEME_FANCY } from '../utils/theme'
 import { count as queueCount } from '../utils/syncQueue'
 import { flushSync } from '../utils/offlineSync'
+import { notify } from '../utils/notify'
+
+// 构建时间戳（vite define 注入，见 vite.config.js）。
+// 用来一眼确认手机上跑的是不是最新构建——SW 缓存没更新时，这行时间不会变。
+// 防御式读取：即便构建期 define 意外缺失，也只是显示空串，不会抛错让整页空白。
+const BUILD_AT = typeof __BUILD_AT__ !== 'undefined' ? __BUILD_AT__ : ''
 
 const store = useStore()
 const router = useRouter()
+// 有历史就回退，深链直达才回首页（避免历史栈越叠越深，影响 iOS 手势返回）
+function goBack() {
+  if (router.options.history.state.back) router.back()
+  else router.push('/home')
+}
 const now = new Date()
 const month = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
 const budget = ref(0)
@@ -131,7 +142,8 @@ async function syncNow() {
   if (!syncPending.value) return showToast('没有待同步的记录')
   const r = await flushSync()
   refreshSync()
-  showToast(r.synced > 0 ? `已同步 ${r.synced} 条` : '网络不可用，联网后会自动重试')
+  if (r.synced > 0) notify({ title: '同步完成', desc: `已上传 ${r.synced} 条离线记录`, type: 'sync' })
+  else notify({ title: '网络不可用', desc: '联网后将自动重试', type: 'offline' })
 }
 
 function openProfile() {
@@ -211,11 +223,17 @@ onActivated(refreshSync)
 
 <style scoped>
 .page { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
-.head { border-radius: 0 0 20px 20px; padding-top: env(safe-area-inset-top); }
-.prof-nav { display: flex; align-items: center; gap: 10px; color: #fff; font-size: 16px; font-weight: 600; height: 52px; padding: 0 14px; }
-.back-ico { font-size: 20px; cursor: pointer; }
+.head { border-radius: 0 0 20px 20px; padding-top: calc(env(safe-area-inset-top) + 10px); position: sticky; top: 0; z-index: 20; }
+.prof-nav { position: relative; display: flex; align-items: center; color: #1a1a1a; font-size: 16px; font-weight: 600; height: 56px; padding: 0 14px; }
+.prof-title { white-space: nowrap; margin-left: 8px; }
+/* 箭头容器宽 24px、热区上下左右各扩 12px（44×44），伪类加在容器上，
+   绝不能加在 van-icon 自身——Vant 图标字形就靠 ::before 渲染，会把它覆盖掉 */
+.nav-left { font-size: 20px; color: #1a1a1a; width: 24px; min-height: 44px; display: flex; align-items: center; justify-content: flex-start; cursor: pointer; -webkit-tap-highlight-color: transparent; position: relative; }
+.nav-left::before { content: ''; position: absolute; left: -12px; right: -12px; top: -12px; bottom: -12px; }
+.nav-left .van-icon { transition: transform .1s ease, opacity .1s ease; }
+.nav-left:active .van-icon { opacity: .5; transform: scale(.9); }
 .head-user { display: flex; align-items: center; padding: 4px 20px 30px; cursor: pointer; }
-.head :deep(.uavatar) { margin-right: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.12); border: 2px solid rgba(255,255,255,.6); }
+.head :deep(.uavatar) { margin-right: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.12); border: 2px solid rgba(0,0,0,.08); }
 .edit-ico { margin-left: auto; opacity: .85; }
 .uname { font-size: 19px; font-weight: 600; }
 .uid { font-size: 12px; opacity: .85; margin-top: 4px; }

@@ -47,12 +47,12 @@ async function submit() {
 </script>
 
 <style scoped>
-.login { min-height: 100vh; min-height: 100dvh; padding-top: env(safe-area-inset-top); background: linear-gradient(180deg, #ff9a44 0%, #ff6b35 42%, #f5f6f8 42%); }
-.brand { text-align: center; padding: 70px 0 30px; color: #fff; }
+.login { min-height: 100vh; min-height: 100dvh; padding-top: env(safe-area-inset-top); background: linear-gradient(180deg, #ffffff 0%, #ffffff 42%, #f5f6f8 42%); }
+.brand { text-align: center; padding: 70px 0 30px; color: #1a1a1a; }
 .logo { display: flex; justify-content: center; filter: drop-shadow(0 4px 10px rgba(0,0,0,.15)); }
 .name { font-size: 28px; font-weight: 700; margin-top: 6px; letter-spacing: 2px; }
 .slogan { font-size: 12px; opacity: .9; margin-top: 8px; }
-.form { background: #fff; margin: 20px 24px; border-radius: 18px; padding: 24px 20px; box-shadow: 0 8px 24px rgba(255,107,53,.12); }
+.form { background: #fff; margin: 20px 24px; border-radius: 18px; padding: 24px 20px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
 .form-title { font-size: 18px; font-weight: 700; text-align: center; margin-bottom: 20px; color: #1a1a1a; }
 .fld { background: #f7f7f7; border-radius: 10px; margin-bottom: 12px; padding: 10px 12px; }
 .err { color: #ee0a24; font-size: 12px; min-height: 18px; }

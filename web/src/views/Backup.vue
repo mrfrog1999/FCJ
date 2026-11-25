@@ -1,165 +1,118 @@
 <template>
   <div class="page backup-page">
-    <van-nav-bar title="备份与恢复" left-text="返回" left-arrow @click-left="$router.back()" />
+    <van-nav-bar title="备份与恢复" left-arrow @click-left="$router.back()" />
 
-    <!-- 顶部 Hero -->
-    <div class="hero">
-      <div class="hero-ring ring-a"></div>
-      <div class="hero-ring ring-b"></div>
-      <div class="hero-content">
-        <div class="hero-icon"><van-icon name="shield-o" /></div>
-        <div class="hero-title">数据安全中心</div>
-        <div class="hero-sub">导出 · 备份 · 恢复，守护每一笔记录</div>
-        <div class="hero-tip"><van-icon name="info-o" /> 完整支持 5 张工作表 · 各账号独立配置</div>
-      </div>
-    </div>
+    <div class="tip-bar">支持随手记导出的 .xls 备份文件。会解析「支出」「收入」「转账」「余额变更」「负债变更」全部工作表：收支记为流水，转账用于账户余额划转，余额/负债变更用于账户调整。成员、分类、账户自动适配。导出的文件同样包含这 5 个工作表，可完整恢复。</div>
 
-    <!-- 导出备份 -->
-    <div class="card">
-      <div class="card-head">
-        <div class="badge badge-export"><van-icon name="down" /></div>
-        <div class="card-head-txt">
-          <div class="card-title">导出备份</div>
-          <div class="card-sub">把账本保存为 .xls 文件</div>
-        </div>
+    <!-- 导出 -->
+    <div class="section-title">导出备份</div>
+    <van-cell-group inset>
+      <div class="sec-body">
+        <div class="sec-desc">把当前账本的收支记录导出为 .xls 文件，可用于备份或在其他设备恢复。</div>
+        <van-button block type="primary" plain :loading="exporting" @click="doExport"><van-icon name="down" /> 导出 XLS</van-button>
       </div>
-      <div class="card-desc">包含支出、收入、转账、余额/负债变更共 5 张工作表，可用于备份或在其他设备完整恢复。</div>
-      <van-button block type="primary" class="main-btn" :loading="exporting" @click="doExport">
-        <van-icon name="down" /> 导出 XLS 备份文件
-      </van-button>
-    </div>
+    </van-cell-group>
 
     <!-- 定时邮件备份 -->
-    <div class="card">
-      <div class="card-head">
-        <div class="badge badge-mail"><van-icon name="envelop-o" /></div>
-        <div class="card-head-txt">
-          <div class="card-title">定时邮件备份</div>
-          <div class="card-sub">自动发送备份到 QQ 邮箱</div>
-        </div>
-        <van-switch v-model="mail.enabled" size="24" class="mail-switch" @change="onMailToggle" />
-      </div>
-      <div class="card-desc">设定频率与时间，到点自动把备份文件发送到你的邮箱，格式与手动导出完全一致。</div>
+    <div class="section-title">定时邮件备份</div>
+    <van-cell-group inset>
+      <div class="sec-body">
+        <div class="sec-desc">到设定时间自动把备份文件发送到你的 QQ 邮箱，格式与手动导出完全一致（5 个工作表）。每个账号独立设置。</div>
+        <van-cell title="启用定时发送" label="按下方频率与时间自动发送备份">
+          <template #right-icon><van-switch v-model="mail.enabled" size="22" /></template>
+        </van-cell>
+        <div class="mail-form" v-if="mail.enabled">
+          <div class="mail-label">发送频率</div>
+          <van-radio-group v-model="mail.frequency" direction="horizontal" class="freq-group">
+            <van-radio name="daily">每天</van-radio>
+            <van-radio name="weekly">每周</van-radio>
+            <van-radio name="monthly">每月</van-radio>
+            <van-radio name="yearly">每年</van-radio>
+          </van-radio-group>
 
-      <div class="mail-form" v-if="mail.enabled">
-        <div class="form-block">
-          <div class="form-label"><span class="lbl-dot"></span>发送频率</div>
-          <div class="chip-group">
-            <div class="chip" :class="{on: mail.frequency==='daily'}" @click="mail.frequency='daily'">每天</div>
-            <div class="chip" :class="{on: mail.frequency==='weekly'}" @click="mail.frequency='weekly'">每周</div>
-            <div class="chip" :class="{on: mail.frequency==='monthly'}" @click="mail.frequency='monthly'">每月</div>
-            <div class="chip" :class="{on: mail.frequency==='yearly'}" @click="mail.frequency='yearly'">每年</div>
+          <div v-if="mail.frequency === 'weekly'" class="mail-sub">
+            <div class="mail-label">星期</div>
+            <van-radio-group v-model="mail.weekday" direction="horizontal" class="freq-group week-group">
+              <van-radio :name="0">日</van-radio>
+              <van-radio :name="1">一</van-radio>
+              <van-radio :name="2">二</van-radio>
+              <van-radio :name="3">三</van-radio>
+              <van-radio :name="4">四</van-radio>
+              <van-radio :name="5">五</van-radio>
+              <van-radio :name="6">六</van-radio>
+            </van-radio-group>
           </div>
-
-          <div class="mail-sub" v-if="mail.frequency==='weekly'">
-            <div class="form-label sm">选择星期</div>
-            <div class="chip-group week">
-              <div class="chip" :class="{on: mail.weekday===0}" @click="mail.weekday=0">日</div>
-              <div class="chip" :class="{on: mail.weekday===1}" @click="mail.weekday=1">一</div>
-              <div class="chip" :class="{on: mail.weekday===2}" @click="mail.weekday=2">二</div>
-              <div class="chip" :class="{on: mail.weekday===3}" @click="mail.weekday=3">三</div>
-              <div class="chip" :class="{on: mail.weekday===4}" @click="mail.weekday=4">四</div>
-              <div class="chip" :class="{on: mail.weekday===5}" @click="mail.weekday=5">五</div>
-              <div class="chip" :class="{on: mail.weekday===6}" @click="mail.weekday=6">六</div>
+          <div v-if="mail.frequency === 'monthly'" class="mail-sub">
+            <div class="mail-label">每月第几天</div>
+            <van-stepper v-model="mail.month_day" :min="1" :max="31" />
+          </div>
+          <div v-if="mail.frequency === 'yearly'" class="mail-sub">
+            <div class="mail-label">每年日期</div>
+            <div class="year-row">
+              <van-stepper v-model="mail.month" :min="1" :max="12" /> <span>月</span>
+              <van-stepper v-model="mail.year_day" :min="1" :max="31" /> <span>日</span>
             </div>
           </div>
-          <div class="mail-sub" v-if="mail.frequency==='monthly'">
-            <div class="form-label sm">每月第几天</div>
-            <div class="stepper-row"><van-stepper v-model="mail.month_day" :min="1" :max="31" /><span class="unit">日</span></div>
+
+          <div class="mail-label">发送时间</div>
+          <input type="time" v-model="mail.send_time" class="mail-time" />
+
+          <van-field v-model="mail.smtp_user" label="发件邮箱" placeholder="你的QQ邮箱，如 xxx@qq.com" type="email" />
+          <van-field v-model="mail.smtp_pass" label="授权码" :placeholder="mail.smtp_pass_set ? '已保存，留空则不修改' : 'QQ邮箱SMTP授权码'" type="password" />
+          <van-field v-model="mail.to_email" label="收件邮箱" placeholder="接收备份的邮箱" type="email" />
+
+          <div v-if="mail.last_sent_key" class="mail-last">上次发送标记：{{ mail.last_sent_key }}</div>
+          <div class="mail-btns">
+            <van-button block size="small" :loading="mailTesting" @click="testMail">测试邮箱</van-button>
+            <van-button block size="small" :loading="mailSending" @click="sendMailNow">立即发送</van-button>
+            <van-button block size="small" type="primary" :loading="mailSaving" @click="saveMail">保存设置</van-button>
           </div>
-          <div class="mail-sub" v-if="mail.frequency==='yearly'">
-            <div class="form-label sm">每年日期</div>
-            <div class="stepper-row">
-              <van-stepper v-model="mail.month" :min="1" :max="12" /><span class="unit">月</span>
-              <van-stepper v-model="mail.year_day" :min="1" :max="31" /><span class="unit">日</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="form-block">
-          <div class="form-label"><span class="lbl-dot"></span>发送时间</div>
-          <div class="time-wrap"><van-icon name="clock-o" /><input type="time" v-model="mail.send_time" class="mail-time" /></div>
-        </div>
-
-        <div class="form-block">
-          <div class="form-label"><span class="lbl-dot"></span>邮箱配置</div>
-          <div class="fields">
-            <van-field v-model="mail.smtp_user" label="发件邮箱" placeholder="你的QQ邮箱，如 xxx@qq.com" type="email" />
-            <van-field v-model="mail.smtp_pass" label="授权码" :placeholder="mail.smtp_pass_set ? '已保存，留空则不修改' : 'QQ邮箱SMTP授权码'" type="password" />
-            <van-field v-model="mail.to_email" label="收件邮箱" placeholder="接收备份的邮箱" type="email" />
-          </div>
-          <div class="field-hint"><van-icon name="info-o" /> 需在 QQ 邮箱开启 SMTP 服务并生成授权码（非登录密码）</div>
-        </div>
-
-        <div v-if="mail.last_sent_key" class="mail-last"><van-icon name="success" /> 上次发送：{{ mail.last_sent_key }}</div>
-
-        <div class="mail-btns">
-          <van-button block size="small" class="btn-ghost" :loading="mailTesting" @click="testMail">测试邮箱</van-button>
-          <van-button block size="small" class="btn-ghost" :loading="mailSending" @click="sendMailNow">立即发送</van-button>
-          <van-button block size="small" type="primary" class="btn-save" :loading="mailSaving" @click="saveMail">保存设置</van-button>
         </div>
       </div>
-      <div class="mail-off" v-else><van-icon name="envelop-o" /> 打开上方开关以配置定时发送</div>
-    </div>
+    </van-cell-group>
 
-    <!-- 导入恢复 -->
-    <div class="card">
-      <div class="card-head">
-        <div class="badge badge-import"><van-icon name="upgrade" /></div>
-        <div class="card-head-txt">
-          <div class="card-title">导入恢复</div>
-          <div class="card-sub">从 .xls 文件恢复数据</div>
-        </div>
+    <!-- 导入 -->
+    <div class="section-title">导入恢复</div>
+    <van-cell-group inset>
+      <div class="sec-body">
+        <div class="sec-desc">选择 .xls 备份文件，先预览内容再决定是否导入。</div>
+        <input ref="fileInput" type="file" accept=".xls,.xlsx" class="hidden-file" @change="onFile" />
+        <van-button block type="primary" plain @click="chooseFile"><van-icon name="upgrade" /> 选择备份文件</van-button>
+        <div v-if="fileName" class="file-name">已选择：{{ fileName }}</div>
       </div>
-      <div class="card-desc">选择备份文件，先预览内容再决定是否导入。成员、分类、账户会自动适配。</div>
-      <input ref="fileInput" type="file" accept=".xls,.xlsx" class="hidden-file" @change="onFile" />
-      <van-button block type="primary" class="main-btn" @click="chooseFile"><van-icon name="upgrade" /> 选择备份文件</van-button>
-      <div v-if="fileName" class="file-name"><van-icon name="description" /> {{ fileName }}</div>
-    </div>
+    </van-cell-group>
 
     <!-- 预览结果 -->
-    <div class="card result-card" v-if="preview">
-      <div class="card-head">
-        <div class="badge badge-preview"><van-icon name="description" /></div>
-        <div class="card-head-txt">
-          <div class="card-title">文件预览</div>
-          <div class="card-sub">确认内容后再导入</div>
-        </div>
-      </div>
-      <div class="stat-grid">
-        <div class="stat-item"><div class="stat-num">{{ fmt(preview.expenseCount) }}</div><div class="stat-lbl">支出记录</div></div>
-        <div class="stat-item"><div class="stat-num">{{ fmt(preview.incomeCount) }}</div><div class="stat-lbl">收入记录</div></div>
-        <div class="stat-item"><div class="stat-num">{{ fmt(preview.transferCount || 0) }}</div><div class="stat-lbl">转账记录</div></div>
-        <div class="stat-item"><div class="stat-num">{{ fmt(preview.adjustmentCount || 0) }}</div><div class="stat-lbl">余额/负债变更</div></div>
-        <div class="stat-item"><div class="stat-num">{{ fmt(preview.memberCount) }}</div><div class="stat-lbl">成员</div></div>
-        <div class="stat-item"><div class="stat-num">{{ fmt(preview.categoryCount) }}</div><div class="stat-lbl">分类</div></div>
-      </div>
-      <div v-if="skippedSheets.length" class="skip-tip">未导入工作表：{{ skippedSheets.join('、') }}</div>
-      <div class="mode-block">
-        <div class="form-label"><span class="lbl-dot"></span>导入方式</div>
-        <van-radio-group v-model="mode" direction="horizontal" class="mode-radio">
+    <van-cell-group inset v-if="preview" class="result-card">
+      <div class="result-head">文件预览</div>
+      <van-cell title="支出记录" :value="preview.expenseCount + ' 条'" />
+      <van-cell title="收入记录" :value="preview.incomeCount + ' 条'" />
+      <van-cell title="转账记录" :value="(preview.transferCount || 0) + ' 条'" />
+      <van-cell title="余额/负债变更" :value="(preview.adjustmentCount || 0) + ' 条'" />
+      <van-cell title="成员" :value="preview.memberCount + ' 位'" />
+      <van-cell title="分类" :value="preview.categoryCount + ' 个'" />
+      <van-cell v-if="skippedSheets.length" title="未导入工作表" :value="skippedSheets.join('、')" />
+      <div class="mode-row">
+        <span class="mode-label">导入方式</span>
+        <van-radio-group v-model="mode" direction="horizontal">
           <van-radio name="append">追加</van-radio>
-          <van-radio name="replace">覆盖（清空旧记录）</van-radio>
+          <van-radio name="replace">覆盖（清空本账本旧记录）</van-radio>
         </van-radio-group>
       </div>
       <div class="result-btns">
         <van-button block @click="resetImport">取消</van-button>
         <van-button block type="primary" :loading="importing" @click="doImport">确认导入</van-button>
       </div>
-    </div>
+    </van-cell-group>
 
-    <!-- 危险操作 -->
-    <div class="card danger-card">
-      <div class="card-head">
-        <div class="badge badge-danger"><van-icon name="warning-o" /></div>
-        <div class="card-head-txt">
-          <div class="card-title">危险操作</div>
-          <div class="card-sub">请谨慎操作</div>
-        </div>
+    <!-- 清空流水 -->
+    <div class="section-title danger-title">危险操作</div>
+    <van-cell-group inset>
+      <div class="sec-body">
+        <div class="sec-desc">清空当前账本的全部流水（收支、转账、余额/负债变更）。成员、分类、账户、预算会保留。此操作不可撤销，建议先导出备份。</div>
+        <van-button block type="danger" plain :loading="clearing" @click="doClear"><van-icon name="delete-o" /> 清空全部流水</van-button>
       </div>
-      <div class="card-desc">清空当前账本的全部流水（收支、转账、余额/负债变更）。成员、分类、账户、预算会保留。此操作不可撤销，建议先导出备份。</div>
-      <van-button block type="danger" class="danger-btn" :loading="clearing" @click="doClear"><van-icon name="delete-o" /> 清空全部流水</van-button>
-    </div>
+    </van-cell-group>
 
     <van-action-sheet v-model:show="showBooks" :actions="bookActions" @select="onSelectBook" cancel-text="取消" />
 
@@ -167,7 +120,7 @@
     <van-overlay :show="progress.show" :z-index="2000" :lock-scroll="true">
       <div class="progress-wrap" @click.stop>
         <div class="progress-card">
-          <van-loading type="spinner" size="38px" color="#ff6b35" />
+          <van-loading type="spinner" size="38px" color="#1989fa" />
           <div class="progress-title">{{ progress.title }}</div>
           <div class="progress-bar"><div class="progress-fill" :style="{ width: progress.percent + '%' }"></div></div>
           <div class="progress-pct">{{ progress.percent }}%</div>
@@ -417,93 +370,44 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.backup-page { padding-bottom: calc(32px + env(safe-area-inset-bottom)); background: #f5f6f8; }
-
-/* 顶部 Hero */
-.hero { position: relative; overflow: hidden; margin: 12px 12px 6px; border-radius: 16px; background: var(--primary-grad); padding: 22px 20px 20px; color: #fff; box-shadow: 0 8px 24px rgba(255,107,53,.25); }
-.hero-ring { position: absolute; border: 1.5px solid rgba(255,255,255,.18); border-radius: 50%; pointer-events: none; }
-.ring-a { width: 160px; height: 160px; right: -40px; top: -60px; }
-.ring-b { width: 230px; height: 230px; right: -90px; top: -95px; }
-.hero-content { position: relative; z-index: 1; }
-.hero-icon { width: 42px; height: 42px; border-radius: 12px; background: rgba(255,255,255,.2); display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 12px; }
-.hero-title { font-size: 21px; font-weight: 800; letter-spacing: .5px; }
-.hero-sub { font-size: 13px; opacity: .92; margin-top: 5px; }
-.hero-tip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; margin-top: 14px; background: rgba(255,255,255,.18); padding: 5px 10px; border-radius: 20px; }
-
-/* 功能卡片 */
-.card { background: #fff; border-radius: 14px; margin: 12px; padding: 16px; box-shadow: 0 2px 12px rgba(0,0,0,.04); }
-.card-head { display: flex; align-items: center; gap: 12px; }
-.badge { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 21px; color: #fff; flex-shrink: 0; }
-.badge-export { background: linear-gradient(135deg,#4facfe,#00c6ff); }
-.badge-mail { background: var(--primary-grad); }
-.badge-import { background: linear-gradient(135deg,#43e97b,#38f9d7); }
-.badge-preview { background: linear-gradient(135deg,#667eea,#764ba2); }
-.badge-danger { background: linear-gradient(135deg,#ff8a5b,#ee0a24); }
-.card-head-txt { flex: 1; min-width: 0; }
-.card-title { font-size: 15px; font-weight: 700; color: #1a1a1a; }
-.card-sub { font-size: 11px; color: #999; margin-top: 3px; }
-.card-desc { font-size: 12px; color: #8a8a8a; line-height: 1.7; margin: 12px 0 14px; }
-.main-btn { border-radius: 10px; height: 42px; font-weight: 600; font-size: 14px; }
-.main-btn.van-button--primary { background: var(--primary-grad); border: none; box-shadow: 0 4px 12px rgba(255,107,53,.25); }
+.backup-page { padding-bottom: 24px; }
+.tip-bar { font-size: 12px; color: #666; background: #fff7f3; margin: 12px 16px; padding: 10px 12px; border-radius: 10px; line-height: 1.6; }
+.section-title { font-size: 13px; font-weight: 600; color: #333; margin: 18px 16px 8px; }
+.danger-title { color: #ee0a24; }
+.sec-body { padding: 14px 16px; }
+.sec-desc { font-size: 12px; color: #999; line-height: 1.6; margin-bottom: 12px; }
+.hidden-file { display: none; }
+.file-name { font-size: 12px; color: var(--primary); margin-top: 10px; word-break: break-all; }
 
 /* 定时邮件备份 */
-.mail-switch { flex-shrink: 0; }
-.mail-form { margin-top: 14px; border-top: 1px dashed #ececec; padding-top: 2px; }
-.form-block { padding: 12px 0 6px; }
-.form-block + .form-block { border-top: 1px solid #f5f5f5; }
-.form-label { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 12px; }
-.form-label.sm { font-size: 12px; color: #666; margin-bottom: 10px; }
-.lbl-dot { width: 4px; height: 14px; border-radius: 2px; background: var(--primary); }
-.chip-group { display: flex; flex-wrap: wrap; gap: 9px; }
-.chip { padding: 7px 16px; border-radius: 18px; background: #f5f6f8; color: #666; font-size: 13px; border: 1px solid transparent; transition: all .18s; user-select: none; }
-.chip.on { background: var(--primary-grad); color: #fff; font-weight: 600; box-shadow: 0 3px 8px rgba(255,107,53,.25); }
-.chip-group.week .chip { padding: 6px 0; width: 38px; text-align: center; }
-.mail-sub { background: #fafbfc; border-radius: 10px; padding: 12px; margin-top: 12px; }
-.stepper-row { display: flex; align-items: center; gap: 10px; }
-.unit { font-size: 13px; color: #666; }
-.time-wrap { display: flex; align-items: center; gap: 10px; background: #fafbfc; border-radius: 10px; padding: 0 14px; height: 44px; color: var(--primary); font-size: 18px; }
-.mail-time { flex: 1; border: none; background: transparent; font-size: 16px; color: #333; outline: none; font-family: var(--app-font); }
-.fields { background: #fafbfc; border-radius: 10px; overflow: hidden; }
-.fields :deep(.van-field) { padding: 11px 14px; }
-.fields :deep(.van-field__label) { width: 72px; color: #555; }
-.field-hint { display: flex; align-items: flex-start; gap: 5px; font-size: 11px; color: #aaa; margin-top: 10px; line-height: 1.5; }
-.mail-last { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #07c160; background: #f0fbf5; padding: 8px 12px; border-radius: 8px; margin-top: 12px; }
+.mail-form { border-top: 1px solid #f0f0f0; margin-top: 4px; padding-top: 14px; }
+.mail-label { font-size: 13px; color: #333; margin: 14px 0 10px; }
+.mail-form > .mail-label:first-child { margin-top: 0; }
+.freq-group { gap: 8px 18px; flex-wrap: wrap; }
+.week-group .van-radio { margin-right: 6px; }
+.mail-sub { background: #fafafa; border-radius: 8px; padding: 8px 12px 12px; margin-top: 4px; }
+.mail-time { width: 100%; box-sizing: border-box; border: none; border-bottom: 1px solid #eee; background: transparent; font-size: 15px; color: #333; padding: 10px 0; outline: none; }
+.mail-form :deep(.van-field) { padding: 10px 0; }
+.mail-form :deep(.van-field__label) { width: 76px; }
+.mail-last { font-size: 11px; color: #999; margin-top: 10px; }
 .mail-btns { display: flex; gap: 8px; margin-top: 16px; }
-.mail-btns .van-button { flex: 1; padding: 0 2px; font-size: 12px; }
-.btn-ghost.van-button { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
-.btn-save.van-button { background: var(--primary-grad); border: none; }
-.mail-off { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: #bbb; background: #fafbfc; border-radius: 10px; padding: 18px; margin-top: 14px; }
-
-/* 文件选择 */
-.hidden-file { display: none; }
-.file-name { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--primary); margin-top: 12px; word-break: break-all; }
-
-/* 预览结果 */
-.stat-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin: 14px 0; }
-.stat-item { background: #fafbfc; border-radius: 10px; padding: 12px 6px; text-align: center; }
-.stat-num { font-size: 18px; font-weight: 700; color: var(--primary); }
-.stat-lbl { font-size: 11px; color: #999; margin-top: 4px; }
-.skip-tip { font-size: 11px; color: #ff976a; background: #fff7f0; padding: 8px 10px; border-radius: 8px; margin-bottom: 10px; }
-.mode-block { padding: 8px 0 4px; }
-.mode-radio { gap: 8px 20px; flex-wrap: wrap; }
-.result-btns { display: flex; gap: 10px; margin-top: 14px; }
-.result-btns .van-button { flex: 1; }
-.result-btns .van-button--primary { background: var(--primary-grad); border: none; }
-
-/* 危险操作 */
-.danger-card { border-left: 3px solid #ee0a24; padding-left: 14px; }
-.danger-btn { border-radius: 10px; height: 42px; font-weight: 600; }
+.mail-btns .van-button { flex: 1; padding: 0 4px; }
+.result-card { margin-top: 16px; }
+.result-head { font-size: 14px; font-weight: 600; padding: 14px 16px 4px; }
+.mode-row { padding: 12px 16px; }
+.mode-label { display: block; font-size: 13px; color: #333; margin-bottom: 10px; }
+.result-btns { display: flex; gap: 10px; padding: 6px 16px 16px; }
 
 /* 过程进度弹层 */
 .progress-wrap { display: flex; align-items: center; justify-content: center; height: 100%; padding: 0 32px; }
 .progress-card { width: 100%; max-width: 320px; background: #fff; border-radius: 16px; padding: 28px 22px 22px; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,.18); }
 .progress-title { font-size: 16px; font-weight: 600; color: #1a1a1a; margin: 14px 0 16px; }
 .progress-bar { height: 7px; background: #eef1f5; border-radius: 4px; overflow: hidden; }
-.progress-fill { height: 100%; background: var(--primary-grad); border-radius: 4px; transition: width .15s linear; }
-.progress-pct { font-size: 12px; color: var(--primary); margin: 8px 0 16px; font-weight: 600; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #69c0ff, #1989fa); border-radius: 4px; transition: width .15s linear; }
+.progress-pct { font-size: 12px; color: #1989fa; margin: 8px 0 16px; font-weight: 600; }
 .progress-steps { text-align: left; margin: 0 auto 4px; max-width: 200px; }
 .progress-step { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #bbb; margin: 9px 0; transition: color .2s; }
-.progress-step.active { color: var(--primary); font-weight: 600; }
+.progress-step.active { color: #1989fa; font-weight: 600; }
 .progress-step.done { color: #52c41a; }
 .step-dot { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid currentColor; display: flex; align-items: center; justify-content: center; font-size: 11px; }
 .progress-step.done .step-dot { background: #52c41a; border-color: #52c41a; color: #fff; }

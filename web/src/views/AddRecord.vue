@@ -199,13 +199,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+// 命名供 App.vue 的 <KeepAlive include="AddRecord"> 精确缓存：
+// 记一笔实例常驻内存，反复进出不再重新挂载，消除点击后的挂载空窗。
+defineOptions({ name: 'AddRecord' })
+
+import { ref, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { useStore } from '../store'
 import { api } from '../api'
 import { enqueueCreate } from '../utils/offlineSync'
+import { notify } from '../utils/notify'
 import { readCache, writeCache } from '../utils/cache'
+import { takePendingRecord } from '../utils/pendingEdit'
 import SvgIcon from '../components/SvgIcon.vue'
 import CategoryIcon from '../components/CategoryIcon.vue'
 import UserAvatar from '../components/UserAvatar.vue'
@@ -354,22 +360,37 @@ function parseDate(s) {
   return isNaN(d) ? new Date() : d
 }
 
-onMounted(async () => {
-  if (!store.ready) await store.loadBase().catch(() => {})
-  if (!store.members.length) await store.loadMembers().catch(() => {})
-  // 加载分类树与账户：网络失败时回退到本地缓存，保证离线也能记一笔
+// 用一条记录对象同步填满表单。列表页点击时已经把整条记录传过来（见 utils/pendingEdit），
+// 所以编辑页滑进来的第一帧就是这条记录的真实内容，不会先露出空表单再「跳」出数据。
+function fillFromRecord(r) {
+  const isTransfer = r.type === 'transfer' || String(r.id || '').startsWith('transfer_')
+  type.value = isTransfer ? 'transfer' : (['expense', 'income'].includes(r.type) ? r.type : 'expense')
+  amount.value = (r.amount === null || r.amount === undefined || r.amount === '') ? '' : Number(r.amount).toFixed(2)
+  catId.value = r.category_id || null
+  catParent.value = r.category1 || ''
+  catName.value = r.category2 || r.category_name || ''
+  account.value = r.account || ''
+  fromAccount.value = r.from_account || ''
+  toAccount.value = r.to_account || ''
+  note.value = r.note || ''
+  if (r.member_id) memberId.value = r.member_id
+  else if (r.user_id) memberId.value = r.user_id
+  const d = r.record_date || r.transfer_date
+  if (d) dateObj.value = parseDate(d)
+}
+
+// 记一笔是 App 级常驻组件（见 App.vue），不会反复挂载/销毁，
+// 因此用 watch 路由代替 onActivated：每次真正进入 /add（含冷启动直达、编辑传参变化）时
+// 按当前路由重新初始化表单，语义与原来的 onActivated 完全一致。
+function initForm() {
   const accKey = 'accounts_' + store.currentBookId
-  const [treeRaw, accs] = await Promise.all([
-    api.categories.tree().catch(() => null),
-    api.accounts.list({ book_id: store.currentBookId }).catch(() => null)
-  ])
   const cachedTree = readCache('cat_tree')
-  const tree = treeRaw || cachedTree || { expense: [], income: [] }
-  if (treeRaw) writeCache('cat_tree', treeRaw)
-  if (accs && accs.length) writeCache(accKey, accs)
-  const accList = accs || readCache(accKey) || []
-  catTree.value = tree.expense.length ? tree.expense : tree.income
-  accounts.value = (accList || []).map(a => a.account).filter(Boolean)
+  const cachedAcc = readCache(accKey)
+
+  // ① 同步阶段：先用本地缓存即时填充，页面首帧即完整，滑入动画期间不做网络等待/大量重渲染
+  const initTree = cachedTree || { expense: [], income: [] }
+  catTree.value = initTree.expense?.length ? initTree.expense : (initTree.income || [])
+  if (cachedAcc?.length) accounts.value = cachedAcc.map(a => a.account).filter(Boolean)
 
   // 默认成员：优先用账号关联的记账成员，其次登录账号自己，兜底第一个成员
   const bindId = store.user?.bind_member_id
@@ -378,34 +399,11 @@ onMounted(async () => {
     || store.user?.id || store.members[0]?.id || null
 
   const editId = route.query.id
-  const isTransferEdit = editId && String(editId).startsWith('transfer_')
-  if (isTransferEdit) {
-    // 编辑转账：id 形如 transfer_123
-    try {
-      const r = await api.transfers.get(String(editId).replace('transfer_', ''))
-      type.value = 'transfer'
-      amount.value = String(r.amount)
-      fromAccount.value = r.from_account || ''
-      toAccount.value = r.to_account || ''
-      note.value = r.note || ''
-      memberId.value = r.member_id || defaultMember
-      dateObj.value = parseDate(r.transfer_date)
-    } catch (e) { showToast('加载转账失败') }
-  } else if (editId) {
-    // 编辑模式：加载普通收支记录详情
-    try {
-      const r = await api.records.get(editId)
-      type.value = ['expense', 'income'].includes(r.type) ? r.type : 'expense'
-      amount.value = String(r.amount)
-      catId.value = r.category_id || null
-      catParent.value = r.category1 || ''
-      catName.value = r.category2 || r.category_name || ''
-      account.value = r.account || ''
-      note.value = r.note || ''
-      memberId.value = r.member_id || r.user_id || defaultMember
-      dateObj.value = parseDate(r.record_date)
-    } catch (e) { showToast('加载记录失败') }
-  } else {
+  const transferEdit = editId && String(editId).startsWith('transfer_')
+  const pendingRecord = editId ? takePendingRecord(editId) : null
+  const hasPending = !!pendingRecord
+  if (!editId) {
+    // 新建：同步设好默认表单，立即可交互
     type.value = 'expense'
     amount.value = ''
     catParent.value = ''
@@ -416,8 +414,58 @@ onMounted(async () => {
     note.value = ''
     memberId.value = defaultMember
     dateObj.value = new Date()
+  } else {
+    // 编辑：先用调用方带过来的记录同步填充（首帧即完整），下面再后台拉最新值校准
+    if (pendingRecord) fillFromRecord(pendingRecord)
+    else if (!memberId.value) memberId.value = defaultMember
   }
-})
+
+  // ② 后台阶段：并行刷新基础数据与缓存，全部不阻塞首屏渲染
+  if (!store.ready) store.loadBase().catch(() => {})
+  if (!store.members.length) store.loadMembers().catch(() => {})
+  Promise.all([
+    api.categories.tree().catch(() => null),
+    api.accounts.list({ book_id: store.currentBookId }).catch(() => null)
+  ]).then(([treeRaw, accs]) => {
+    const tree = treeRaw || cachedTree || { expense: [], income: [] }
+    if (treeRaw) writeCache('cat_tree', treeRaw)
+    if (accs?.length) writeCache(accKey, accs)
+    catTree.value = tree.expense?.length ? tree.expense : (tree.income || [])
+    const accList = accs?.length ? accs : (cachedAcc || [])
+    accounts.value = accList.map(a => a.account).filter(Boolean)
+    // 成员列表异步回来后，若此前未定出成员则补全
+    if (!editId) {
+      const dm = store.members.find(m => m.id === store.user?.bind_member_id)?.id
+        || store.members.find(m => m.id === store.user?.id)?.id
+        || store.user?.id || store.members[0]?.id || null
+      if (!memberId.value && dm) memberId.value = dm
+    }
+  }).catch(() => {})
+
+  // ③ 编辑模式兜底：只有没拿到「点击时带过来的记录」（刷新直达 / 深链）才请求详情。
+  // 已同步填充过的不再发请求，避免回包覆盖用户正在改的内容，也少一次主线程更新。
+  if (hasPending) return
+  if (transferEdit) {
+    // 编辑转账：id 形如 transfer_123
+    api.transfers.get(String(editId).replace('transfer_', '')).then(r => {
+      fillFromRecord({ ...r, type: 'transfer', id: editId })
+      if (!memberId.value) memberId.value = defaultMember
+    }).catch(() => showToast('加载转账失败'))
+  } else if (editId) {
+    // 编辑模式：加载普通收支记录详情
+    api.records.get(editId).then(r => {
+      fillFromRecord(r)
+      if (!memberId.value) memberId.value = defaultMember
+    }).catch(() => showToast('加载记录失败'))
+  }
+}
+
+// 仅在真正处于 /add 时初始化（常驻组件在其它页面时不发无谓请求）
+watch(
+  () => (route.name === 'add' ? route.fullPath : ''),
+  v => { if (v) initForm() },
+  { immediate: true }
+)
 
 function switchType(t) {
   if (t === 'template') { showToast('模板功能暂未开放'); return }
@@ -491,7 +539,8 @@ async function save() {
         }
       }
       store.touch()
-      showToast(offline ? '已存到本地，联网后自动同步' : '保存成功')
+      if (offline) notify({ title: '已同步到本地', desc: '联网后将自动上传这笔转账', type: 'offline' })
+      else showToast('保存成功')
       setTimeout(() => router.back(), 400)
     } catch (e) { showToast(e.message) }
     return
@@ -524,7 +573,8 @@ async function save() {
       }
     }
     store.touch()
-    showToast(offline ? '已存到本地，联网后自动同步' : '保存成功')
+    if (offline) notify({ title: '已同步到本地', desc: '联网后将自动上传这笔记录', type: 'offline' })
+    else showToast('保存成功')
     setTimeout(() => router.back(), 400)
   } catch (e) { showToast(e.message) }
 }
@@ -617,12 +667,16 @@ function resetTime() { dateObj.value = new Date() }
 </script>
 
 <style scoped>
-.add-page { min-height: 100vh; min-height: 100dvh; background: #fff; padding-bottom: calc(262px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+.add-page { min-height: 100vh; background: #fff; padding-bottom: calc(262px + env(safe-area-inset-bottom)); box-sizing: border-box; }
 .add-page.kp-folded { padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
-.navbar { height: calc(50px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); display: flex; align-items: center; justify-content: space-between; padding-left: 16px; padding-right: 16px; position: relative; background: #fff; }
-.nav-left { font-size: 22px; color: #333; width: 40px; }
-.nav-title { position: absolute; left: 50%; transform: translateX(-50%); font-size: 17px; font-weight: 600; color: #222; }
-.nav-save { display: flex; align-items: center; gap: 3px; color: #ff9a2e; font-size: 15px; font-weight: 600; cursor: pointer; }
+/* 导航栏吸顶：PWA 全屏时页面内容滚动不会顶到状态栏底下与时间/信号重叠 */
+.navbar { height: calc(56px + env(safe-area-inset-top)); padding-top: calc(env(safe-area-inset-top) + 10px); display: flex; align-items: center; justify-content: flex-start; padding-left: 14px; padding-right: 16px; position: sticky; top: 0; z-index: 9; background: #fff; border-bottom: 1px solid #f0f0f0; }
+.nav-left { font-size: 20px; color: #1a1a1a; width: 24px; min-height: 44px; display: flex; align-items: center; justify-content: flex-start; cursor: pointer; -webkit-tap-highlight-color: transparent; position: relative; }
+.nav-left::before { content: ''; position: absolute; left: -12px; right: -12px; top: -12px; bottom: -12px; }
+.nav-left:active .van-icon { opacity: .5; transform: scale(.9); }
+.nav-left .van-icon { transition: transform .1s ease, opacity .1s ease; }
+.nav-title { font-size: 16px; font-weight: 600; color: #1a1a1a; margin-left: 8px; }
+.nav-save { display: flex; align-items: center; gap: 3px; margin-left: auto; color: #1a1a1a; font-size: 15px; font-weight: 600; cursor: pointer; }
 .type-tabs { display: flex; align-items: center; border-bottom: 1px solid #f2f2f2; padding: 0 12px; height: 44px; }
 .tt { flex: 1; text-align: center; font-size: 14px; color: #999; height: 44px; line-height: 44px; position: relative; }
 .tt.on { color: #ff9a2e; font-weight: 600; }

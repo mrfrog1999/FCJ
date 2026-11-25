@@ -1,6 +1,6 @@
 <template>
   <div class="subpage">
-    <van-nav-bar title="分类管理" left-text="返回" left-arrow @click-left="$router.back()" />
+    <van-nav-bar title="分类管理" left-arrow @click-left="$router.back()" />
 
     <!-- 支出/收入切换 + 新增一级分类 -->
     <div class="type-switch">
@@ -108,6 +108,7 @@ import CategoryIcon from '../components/CategoryIcon.vue'
 import IconPicker from '../components/IconPicker.vue'
 import { resolveIcon } from '../utils/icons'
 import { isPickedIcon } from '../utils/categoryIconMap'
+import { readCache, writeCache } from '../utils/cache'
 
 const store = useStore()
 const type = ref('expense')
@@ -155,8 +156,15 @@ const ungrouped = computed(() => {
 })
 
 async function loadGroups() {
-  const all = await api.categories.groups()
-  groups.value = all.filter(g => g.type === type.value)
+  try {
+    const all = await api.categories.groups()
+    groups.value = all.filter(g => g.type === type.value)
+    writeCache('category_groups', all)
+  } catch (e) {
+    // 离线：读缓存的一级分类，保证分组头正常显示
+    const cached = readCache('category_groups')
+    if (Array.isArray(cached)) groups.value = cached.filter(g => g.type === type.value)
+  }
 }
 function switchType(t) { type.value = t; loadGroups() }
 
@@ -232,13 +240,21 @@ async function delGroup() {
 }
 
 onMounted(async () => {
-  if (!store.ready) await store.loadBase().catch(() => {})
+  // 先同步就位缓存数据，避免离线时被网络请求卡住导致空白
+  if (!store.categories.length) {
+    const cached = readCache('base_categories')
+    if (Array.isArray(cached)) store.categories = cached
+  }
+  const cachedGroups = readCache('category_groups')
+  if (Array.isArray(cachedGroups)) groups.value = cachedGroups.filter(g => g.type === type.value)
+  if (!store.ready) store.loadBase().catch(() => {})
+  // 后台刷新一级分类（在线成功会更新缓存，离线则保留上面已就位的缓存）
   await loadGroups()
 })
 </script>
 
 <style scoped>
-.subpage { min-height: 100vh; min-height: 100dvh; background: #f5f6f8; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+.subpage { min-height: 100vh; background: #f5f6f8; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 .type-switch { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: #fff; border-bottom: 1px solid #f0f0f0; }
 .ts-tabs { display: flex; gap: 24px; }
 .ts-tabs span { color: #999; font-size: 15px; padding: 16px 0 12px; cursor: pointer; }

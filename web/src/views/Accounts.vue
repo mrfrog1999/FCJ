@@ -1,12 +1,12 @@
 <template>
   <div class="page account-page">
     <!-- 顶部风景 banner -->
-    <div class="hero">
+    <div class="hero" :class="{ compact: heroCompact }">
       <div class="navbar">
         <div class="nav-left" @click="$router.back()"><van-icon name="arrow-left" /></div>
         <div class="nav-title">账户</div>
-        <div class="nav-right">
-          <van-icon name="edit" @click="goEdit" />
+        <div class="nav-right" @click="goEdit">
+          <van-icon name="edit" />
         </div>
       </div>
       <div class="hero-sum">
@@ -53,11 +53,12 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onActivated, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onActivated, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStore } from '../store'
 import { readCache, writeCache } from '../utils/cache'
 import { api } from '../api'
+import { afterNav } from '../utils/afterNav'
 import SmartIcon from '../components/SmartIcon.vue'
 import { categoryOf, CATEGORY_META } from '../utils/accountCategory'
 import { showToast } from 'vant'
@@ -72,6 +73,19 @@ const loaded = ref(false)
 // 命中缓存立即放行秒显；无缓存则等网络到位再放行，避免先显示 0
 const bannerReady = ref(!!(cachedAcc && cachedAcc.length))
 const hidden = ref(false)
+
+// 顶部 banner 吸顶：PWA 全屏时整页滚动会让头部滚走，列表内容直接顶到状态栏底下，
+// 和时间/信号图标叠在一起。这里让 banner 吸附在顶部，滚过一屏后收起余额区、
+// 只保留导航条（含状态栏底色），保证任何滚动位置状态栏都有干净的背景。
+const heroCompact = ref(false)
+let scrollTicking = false
+// 滚动容器是 #app（body 锁高做 flex，整页滚动移到 #app 内部），不是 window。
+// 上次文档流方案里账户页"坏掉"就是这里还在读 window.scrollY（永远为 0）导致 banner 不收起。
+const pageScroller = () => document.querySelector('#app')
+function onPageScroll() {
+  // 橙红 banner 常驻顶部：按用户要求固定、不随页面滚动，不再随滚动收起。
+  // heroCompact 恒为 false，整块 hero（白导航 + 橙红数据区）始终吸附在顶部。
+}
 
 const fmt = n => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -135,9 +149,12 @@ function goEdit() { router.push('/account-edit') }
 function openDetail(a) { router.push({ path: '/account-detail', query: { account: a.account } }) }
 
 let lastVersion = -1
-async function load() {
+/* silent=true 用于「返回本页」的静默刷新：
+   不能把 loaded 置回 false，否则整张列表会被 v-if 卸载，页面高度骤降，
+   浏览器会把滚动位置钳到 0 —— 表现为从账户详情返回时被拉回顶部、并闪一下骨架。 */
+async function load(silent = false) {
   lastVersion = store.dataVersion
-  loaded.value = false
+  if (!silent) loaded.value = false
   try {
     const list = await api.accounts.list(store.currentBookId ? { book_id: store.currentBookId } : {})
     accounts.value = list
@@ -147,39 +164,54 @@ async function load() {
   await nextTick()
   bannerReady.value = true
 }
-watch(() => store.currentBookId, load)
+watch(() => store.currentBookId, () => load())
 function refreshIfNeeded() {
-  if (lastVersion !== store.dataVersion) load()
+  if (lastVersion !== store.dataVersion) load(true)
 }
 onMounted(async () => {
+  pageScroller()?.addEventListener('scroll', onPageScroll, { passive: true })
   if (!store.ready) await store.loadBase().catch(() => {})
   refreshIfNeeded()
 })
-onActivated(() => { if (store.ready) refreshIfNeeded() })
+onActivated(() => { onPageScroll(); afterNav(() => { if (store.ready) refreshIfNeeded() }) })
+onUnmounted(() => pageScroller()?.removeEventListener('scroll', onPageScroll))
 </script>
 
 <style scoped>
-.account-page { padding-bottom: calc(20px + env(safe-area-inset-bottom)); background: #f5f6f8; min-height: 100vh; min-height: 100dvh; }
+.account-page { padding-bottom: calc(20px + env(safe-area-inset-bottom)); background: #f5f6f8; min-height: 100vh; }
 
-/* 顶部 banner */
-/* 顶部橙红渐变 banner：与流水页一致，覆盖浏览器状态栏，高度贴合文字 */
+/* 顶部导航栏：纯白背景、深色文字，sticky 固定不动——绝不给它上渐变。
+   橙红渐变 banner 只在导航下方的数据区 .hero-sum，通栏全宽、无圆角。 */
 .hero {
-  position: relative; z-index: 20;
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: 18px;
+  position: sticky; top: 0; z-index: 20;
+  padding-top: calc(env(safe-area-inset-top) + 10px);
+  padding-bottom: 0;
   box-sizing: border-box; overflow: hidden;
-  background: linear-gradient(135deg, #ff9a44 0%, #ff6b35 48%, #f0472d 100%);
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  color: #1a1a1a;
+  transition: padding-bottom .24s cubic-bezier(.22,.61,.36,1);
 }
-.navbar { position: relative; z-index: 2; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; color: #fff; }
-.nav-left, .nav-right { display: flex; align-items: center; min-width: 96px; }
+.hero.compact { padding-bottom: 0; }
+/* 收起时不做滚动锚定补偿，避免浏览器自动调 scrollTop 与阈值判断打架 */
+.account-page { overflow-anchor: none; }
+.navbar { position: relative; z-index: 2; height: 56px; display: flex; align-items: center; justify-content: flex-start; gap: 8px; padding: 0 14px; color: #1a1a1a; }
+.nav-left, .nav-right { display: flex; align-items: center; min-height: 44px; }
+.nav-left { min-width: 24px; width: 24px; position: relative; }
+.nav-left::before { content: ''; position: absolute; left: -12px; right: -12px; top: -12px; bottom: -12px; }
+.nav-left { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.nav-left:active .van-icon { opacity: .5; transform: scale(.9); }
+.nav-left .van-icon { font-size: 20px; transition: transform .1s ease, opacity .1s ease; }
 .nav-right { justify-content: flex-end; gap: 18px; }
-.nav-title { font-size: 16px; font-weight: 600; }
-.hero-sum { position: relative; z-index: 2; padding: 2px 20px 0; color: #fff; }
-.hs-label { font-size: 13px; opacity: .9; }
+.nav-title { font-size: 16px; font-weight: 600; margin-right: auto; }
+/* 导航下方的通栏橙红渐变 banner：全宽、无圆角，净资产/资产/负债白色文字 */
+.hero-sum { position: relative; z-index: 2; margin: 0; padding: 10px 20px 16px; border-radius: 0; background: var(--primary-grad); color: #fff; max-height: 150px; opacity: 1; overflow: hidden; transition: max-height .24s cubic-bezier(.22,.61,.36,1), opacity .16s ease, padding .24s ease; }
+.hero.compact .hero-sum { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; margin: 0; }
+.hs-label { font-size: 13px; opacity: .92; }
 .hs-net { display: flex; align-items: center; gap: 8px; font-size: 38px; font-weight: 600; letter-spacing: .5px; line-height: 1.15; margin: 2px 0 6px; }
 .hs-eye { font-size: 18px; opacity: .85; }
 .hs-sub { font-size: 12px; opacity: .95; display: flex; align-items: center; gap: 10px; }
-.hs-sub i { display: inline-block; width: 1px; height: 11px; background: rgba(255,255,255,.55); }
+.hs-sub i { display: inline-block; width: 1px; height: 11px; background: rgba(255,255,255,.45); }
 /* 数据就绪前的占位：只占位置、完全透明不可见，避免先显示 0 造成跳变 */
 .hs-ph { display: inline-block; height: 1em; vertical-align: middle; background: transparent; }
 .hs-ph-lg { width: 5.6em; }

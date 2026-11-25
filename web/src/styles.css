@@ -45,31 +45,109 @@
 }
 
 * { box-sizing: border-box; }
-html, body, #app { margin: 0; padding: 0; min-height: 100%; }
+/* 消除移动端点击的 ~300ms 延迟：manipulation 只禁用双击缩放，
+   仍保留 pan-x/pan-y，不影响流水页 swipe-cell 的左右滑动与系统返回手势。
+   配合各按钮自身的 :active 反馈，点按即时响应、不再有「点了没反应」的迟钝感。 */
+* { touch-action: manipulation; }
+/* 根布局：body 高度 = 可点击视口（documentElement.clientHeight），不是物理屏。
+   真机铁证（diag.log，iOS18 PWA black-translucent）：
+     100vh       = 956 = 物理屏高度
+     clientHeight= 894 = WebKit 真正的可点击/可渲染视口（从头到尾没变）
+   上一版把 body 撑到 100vh(956)，tab（flex 末项）落到 857~956，
+   中心 y≈907 超出 894 可点击区 → 触摸不派发 → 「统计等 tab 点了没反应」。
+   所以 body 必须回到 clientHeight(894)：tab 回到 795~894，点击恢复。
+   物理屏底 894~956 那 62px 属于系统安全区，DOM 绘制不到，但 html/body
+   的白色 canvas 背景会铺满它，视觉上与 tab 栏白底连成一片、不留灰缝。 */
+html {
+  margin: 0; padding: 0;
+  /* 关键：白底铺满整块物理屏，专治「底部大灰块/空隙」。
+     真机铁证（iOS18 PWA black-translucent + viewport-fit=cover）：
+       物理屏 100vh = 956，可点击视口 clientHeight = 100dvh = 894，差 62px。
+       DOM 只能绘制到 894，底部 894~956 那 62px 没有任何元素覆盖，
+       于是露出 WebView 默认灰底——反复看到的灰缝就是它。
+       把 html 高度设为 100vh(956) + 白背景，让这 62px 系统区也铺上纯白，
+       与 tab 栏白底连成一片、通到底，像苹果官网一样没有遮挡。
+     注意分工：只抬高 html 的「绘制高度」，body 仍锁 clientHeight(894)，
+       tab 始终留在可点击区内——视觉通底与按钮灵敏两者同时成立，互不牺牲。 */
+  height: 100vh;
+  overflow: hidden;
+  background: #fff;
+}
+body {
+  height: 100dvh;              /* 真机 = 894 = 可点击视口 */
+  font-family: var(--app-font);
+  background: #fff;
+  color: #1a1a1a;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  overscroll-behavior-y: none;
+}
+
+/* #app 吃掉剩余高度并独立滚动，tab 作为 flex 末项贴在可点击视口底 894。
+   JS 只做一次兜底：把 body 高度精确锁到 clientHeight，保证 tab 不越界。 */
+#app {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.page {
+  min-height: 100%;
+  padding-bottom: 0;
+}
 body {
   font-family: var(--app-font);
-  background: #f5f6f8;
+  /* 底衬纯白：真机 PWA/WebView 下 env(safe-area-inset-bottom) 常返回 0，
+     视口高度与安全区有偏差时，tab 栏下方会露出 body 底色。
+     白色底衬与 index.html 内联意图一致，无论露出多少都是通到底的白，
+     像苹果官网一样没有灰缝。需要灰底的列表页各自有 #f5f6f8 根背景，不受影响。 */
+  background: #fff;
   color: #1a1a1a;
   -webkit-font-smoothing: antialiased;
   /* PWA/全屏下禁止整页橡皮筋回弹，滚动交给各页容器 */
   overscroll-behavior-y: none;
 }
 .page {
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 100%;
   padding-bottom: calc(76px + env(safe-area-inset-bottom));
 }
 
 /* 全局：Vant 导航栏统一避开顶部状态栏（覆盖所有使用 van-nav-bar 的页面）。
-   __content 保持默认 height:100%，在 padding 之后的内容区里自然居中。 */
+   __content 保持默认 height:100%，在 padding 之后的内容区里自然居中。
+   同时吸顶：PWA 全屏下页面滚动时导航栏若跟着滚走，列表内容会直接顶到状态栏底下，
+   与时间/信号图标叠在一起；sticky 让导航栏（含安全区）始终压在状态栏位置。 */
 .van-nav-bar {
-  padding-top: env(safe-area-inset-top);
-  height: calc(46px + env(safe-area-inset-top));
+  padding-top: calc(env(safe-area-inset-top) + 10px);
+  height: calc(56px + env(safe-area-inset-top));
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  /* 全站头部统一纯白 + 深色字 */
+  background: #fff;
+  --van-nav-bar-text-color: #1a1a1a;
+  --van-nav-bar-title-text-color: #1a1a1a;
+  --van-nav-bar-icon-color: #1a1a1a;
+  --van-nav-bar-arrow-size: 20px;
+  --van-nav-bar-title-font-size: 16px;
 }
+/* 全站标题统一放在返回箭头后面（左对齐），不再居中：
+   left 区改为 static 参与 flex 流，title 紧跟其后；right 区仍 absolute 靠右不受影响。 */
+.van-nav-bar__content { justify-content: flex-start; padding-left: 14px; }
+.van-nav-bar__left { position: static; padding-left: 0; padding-right: 6px; }
+/* 标题左x=66：content 14 + left区40(箭头20+右padding16) + margin12 = 66，与自定义页完全一致 */
+.van-nav-bar__title { font-weight: 600; margin-left: 2px; margin-right: 0; }
+/* 兜底：显式覆盖 Vant 导航栏内所有文字/图标为深色，白底上清晰 */
+.van-nav-bar__title,
+.van-nav-bar__text,
+.van-nav-bar .van-icon { color: #1a1a1a !important; }
 .gradient-card {
-  background: var(--primary-grad);
-  color: #fff;
+  background: #fff;
+  color: #1a1a1a;
   border-radius: 0 0 20px 20px;
+  border-bottom: 1px solid #f0f0f0;
 }
 .amount-in { color: var(--income); }
 .amount-out { color: var(--expense); }
@@ -79,3 +157,51 @@ body {
 .muted { color: #999; }
 .flex { display: flex; align-items: center; }
 .between { justify-content: space-between; }
+
+/* ---------- 页面切换动画已按需求全部关闭 ----------
+   原先这里有两套转场：主框架子页的左右推动（page-fwd/page-back），
+   以及进出「记一笔」的视差（add-fwd/add-back）。现已整体移除：
+   App.vue / MainLayout.vue 不再套 <transition>，router 不再计算方向，
+   记一笔常驻层改为瞬时显隐。通知、按钮反馈等局部微交互不受影响。 */
+
+/* ---------- 好看的全局通知（同步 / 离线等） ---------- */
+.ssj-notify {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  left: 50%;
+  z-index: 30000;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 210px;
+  max-width: calc(100vw - 40px);
+  padding: 11px 18px 11px 11px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .92);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid rgba(255, 255, 255, .75);
+  box-shadow: 0 12px 34px rgba(20, 24, 34, .16), 0 2px 8px rgba(20, 24, 34, .06), inset 0 1px 0 rgba(255, 255, 255, .9);
+  opacity: 0;
+  transform: translate(-50%, -16px) scale(.96);
+  transition: opacity .26s ease, transform .3s cubic-bezier(.22, .9, .3, 1.15);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ssj-notify--in { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.ssj-notify--out { opacity: 0; transform: translate(-50%, -12px) scale(.97); transition: opacity .2s ease, transform .24s ease; }
+.ssj-notify__icon {
+  flex: 0 0 auto;
+  width: 38px; height: 38px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .14);
+}
+.ssj-notify__icon svg { width: 21px; height: 21px; }
+.ssj-notify__body { min-width: 0; }
+.ssj-notify__title { font-size: 14px; font-weight: 700; color: #1a1a1a; line-height: 1.35; white-space: nowrap; }
+.ssj-notify__desc { font-size: 12px; color: #8a9099; line-height: 1.4; margin-top: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ssj-notify { transition-duration: .01ms; }
+}

@@ -1,10 +1,11 @@
 <template>
   <div class="page stats-home">
-    <!-- 顶部标题栏 -->
+    <!-- 顶部导航栏：纯白背景、固定不动——绝不上渐变 -->
     <div class="top-bar">
-      <div class="top-title">统计中心<van-icon name="chart-trending-o" /></div>
-      <div class="top-sub">多维度洞察你的每一笔收支</div>
+      <div class="nav-left" @click="goBack"><van-icon name="arrow-left" /></div>
+      <div class="nav-title">统计中心</div>
     </div>
+    <div class="top-sub">多维度洞察你的每一笔收支</div>
 
     <div class="hub">
       <!-- 左侧竖排 tab -->
@@ -62,38 +63,48 @@ function openChart(key) {
   localStorage.setItem('ssj_stats_last', key)
   router.push({ name: 'stats', query: { key } })
 }
+function goBack() {
+  if (router.options.history.state.back) router.back()
+  else router.push('/home')
+}
 </script>
 
 <style scoped>
-.stats-home { background: #f5f6f8; min-height: 100vh; min-height: 100dvh; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+.stats-home { background: #f5f6f8; min-height: 100vh; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 
-.top-bar { background: var(--primary-grad); padding: calc(20px + env(safe-area-inset-top)) 20px 24px; color: #fff; }
-.top-title { display: flex; align-items: center; gap: 8px; font-size: 21px; font-weight: 800; letter-spacing: .5px; }
-.top-title .van-icon { font-size: 20px; }
-.top-sub { font-size: 12px; opacity: .88; margin-top: 6px; }
+/* 顶部导航栏：纯白背景、深色文字，sticky 固定不动——绝不上渐变。
+   橙红渐变只在导航下方的数据区 .hub。 */
+.top-bar { position: sticky; top: 0; z-index: 20; height: calc(56px + env(safe-area-inset-top)); padding: calc(10px + env(safe-area-inset-top)) 0 0; box-sizing: border-box; display: flex; align-items: center; justify-content: flex-start; color: #1a1a1a; background: #fff; border-bottom: 1px solid #f0f0f0; }
+.nav-left { font-size: 20px; color: #1a1a1a; width: 24px; min-height: 44px; margin-left: 14px; display: flex; align-items: center; justify-content: flex-start; cursor: pointer; -webkit-tap-highlight-color: transparent; position: relative; }
+.nav-left::before { content: ''; position: absolute; left: -12px; right: -12px; top: -12px; bottom: -12px; }
+.nav-left .van-icon { transition: transform .1s ease, opacity .1s ease; }
+.nav-left:active .van-icon { opacity: .5; transform: scale(.9); }
+.nav-title { font-size: 16px; font-weight: 600; color: #1a1a1a; margin-left: 8px; }
+.top-sub { font-size: 12px; opacity: .68; padding: 10px 20px 0; }
 
-.hub { display: flex; margin: 12px; border-radius: 16px; overflow: hidden; min-height: 420px; box-shadow: 0 6px 22px rgba(0,0,0,.06); background: #fff; }
+/* 导航下方的通栏橙红渐变 banner：全宽、无圆角 */
+.hub { display: flex; margin: 0; border-radius: 0; overflow: hidden; min-height: 420px; flex: 1 1 auto; background: var(--primary-grad); }
 
 /* 左侧竖排 tab */
-.side-tabs { width: 62px; flex-shrink: 0; background: #fafbfc; display: flex; flex-direction: column; padding-top: 10px; border-right: 1px solid #f0f0f0; }
-.side-tab { height: 62px; display: flex; align-items: center; justify-content: center; position: relative; color: #999; cursor: pointer; transition: color .18s; }
+.side-tabs { width: 62px; flex-shrink: 0; background: rgba(255,255,255,.16); display: flex; flex-direction: column; padding-top: 10px; border-right: 1px solid rgba(255,255,255,.25); }
+.side-tab { height: 62px; display: flex; align-items: center; justify-content: center; position: relative; color: rgba(255,255,255,.8); cursor: pointer; transition: color .18s; }
 .side-tab .st-text { display: flex; flex-direction: column; align-items: center; line-height: 1.15; font-size: 13px; font-weight: 600; }
-.side-tab.on { color: var(--primary); background: #fff; }
-.side-tab.on::before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 3px; background: var(--primary); }
+.side-tab.on { color: #fff; background: rgba(255,255,255,.12); }
+.side-tab.on::before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 3px; background: #fff; }
 
-/* 右侧渐变内容区 */
-.hub-main { flex: 1; min-width: 0; position: relative; overflow: hidden; padding: 16px 12px 20px; background: linear-gradient(150deg,#fff6f0 0%,#fff9f2 30%,#f3fbff 62%,#faf3ff 100%); }
-.hub-glow { position: absolute; width: 240px; height: 240px; right: -80px; top: -100px; border-radius: 50%; background: radial-gradient(circle,rgba(255,150,90,.18),transparent 70%); pointer-events: none; }
+/* 右侧内容区：透明，透出 .hub 的橙红渐变 */
+.hub-main { flex: 1; min-width: 0; position: relative; overflow: hidden; padding: 16px 12px 20px; background: transparent; }
+.hub-glow { position: absolute; width: 240px; height: 240px; right: -80px; top: -100px; border-radius: 50%; background: radial-gradient(circle,rgba(255,255,255,.22),transparent 70%); pointer-events: none; }
 .section-cap { position: relative; display: flex; align-items: baseline; justify-content: space-between; padding: 0 4px 12px; }
-.cap-title { font-size: 14px; font-weight: 700; color: #333; }
-.cap-count { font-size: 11px; color: #aaa; }
+.cap-title { font-size: 14px; font-weight: 700; color: #fff; }
+.cap-count { font-size: 11px; color: rgba(255,255,255,.85); }
 
 .chart-grid { position: relative; display: grid; grid-template-columns: repeat(3,1fr); gap: 12px 6px; }
 .chart-item { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 2px; border-radius: 12px; border: 1px solid transparent; cursor: pointer; transition: all .18s; }
 .chart-item:active { transform: scale(.95); }
-.chart-item.on { border-color: var(--primary); background: rgba(255,255,255,.8); box-shadow: 0 4px 12px rgba(255,107,53,.12); }
-.ci-ico { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--ci); background: #fff; box-shadow: 0 3px 10px rgba(0,0,0,.06); }
-.ci-label { font-size: 11px; color: #555; font-weight: 600; text-align: center; }
+.chart-item.on { border-color: rgba(255,255,255,.9); background: rgba(255,255,255,.22); box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+.ci-ico { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--ci); background: #fff; box-shadow: 0 3px 10px rgba(0,0,0,.1); }
+.ci-label { font-size: 11px; color: #fff; font-weight: 600; text-align: center; }
 
-.hub-hint { position: relative; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11px; color: #bbb; margin-top: 20px; }
+.hub-hint { position: relative; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11px; color: rgba(255,255,255,.85); margin-top: 20px; }
 </style>

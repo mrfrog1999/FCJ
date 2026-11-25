@@ -150,10 +150,13 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.edit-page { min-height: 100vh; min-height: 100dvh; padding-bottom: calc(20px + env(safe-area-inset-bottom)); background: #f5f6f8; }
-.topbar { position: sticky; top: 0; z-index: 10; height: calc(52px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); background: linear-gradient(135deg,#ff9a44 0%,#ff6b35 48%,#f0472d 100%); color: #fff; display: flex; align-items: center; justify-content: space-between; padding-left: 14px; padding-right: 14px; box-sizing: border-box; }
-.nav-left { min-width: 60px; font-size: 20px; }
-.nav-title { font-size: 16px; font-weight: 600; }
+.edit-page { min-height: 100vh; padding-bottom: calc(20px + env(safe-area-inset-bottom)); background: #f5f6f8; }
+.topbar { position: sticky; top: 0; z-index: 10; height: calc(56px + env(safe-area-inset-top)); padding-top: calc(env(safe-area-inset-top) + 10px); background: #fff; color: #1a1a1a; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; justify-content: flex-start; gap: 8px; padding-left: 14px; padding-right: 14px; box-sizing: border-box; }
+.nav-left { min-width: 24px; width: 24px; min-height: 44px; display: flex; align-items: center; cursor: pointer; -webkit-tap-highlight-color: transparent; position: relative; }
+.nav-left::before { content: ''; position: absolute; left: -12px; right: -12px; top: -12px; bottom: -12px; }
+.nav-left:active .van-icon { opacity: .5; transform: scale(.9); }
+.nav-left .van-icon { transition: transform .1s ease, opacity .1s ease; }
+.nav-title { font-size: 16px; font-weight: 600; margin-right: auto; }
 .nav-right { min-width: 60px; text-align: right; }
 .save-btn { font-size: 14px; font-weight: 600; }
 .tip { font-size: 12px; color: #999; padding: 12px 16px; line-height: 1.5; }

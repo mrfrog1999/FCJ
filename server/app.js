@@ -12,6 +12,20 @@ app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: Date.now() }));
 
+// 真机视口诊断数据回传：页面加载后自动 POST 一次，
+// 用于定位「底部 tab 在真机 PWA 下不贴物理屏底」的视口结构问题。
+// 数据追加到 diag.log（一行一条 JSON），只存视口几何，不含任何用户数据。
+app.post('/api/diag', (req, res) => {
+  try {
+    const d = req.body || {};
+    const line = JSON.stringify({ t: new Date().toISOString(), ...d }) + '\n';
+    fs.appendFileSync(path.join(__dirname, 'diag.log'), line);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false });
+  }
+});
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/books', require('./routes/books'));
