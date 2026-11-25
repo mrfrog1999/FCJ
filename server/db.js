@@ -144,6 +144,7 @@ db.exec(`
     note TEXT DEFAULT '',
     category TEXT,
     sort INTEGER DEFAULT 0,
+    hidden INTEGER DEFAULT 0,
     UNIQUE(book_id, account),
     FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
   );
@@ -328,6 +329,12 @@ function migrateAccountCategory() {
   if (!cols.includes('category')) db.exec('ALTER TABLE account_meta ADD COLUMN category TEXT');
 }
 migrateAccountCategory();
+// 账户隐藏开关（兼容旧库）：1=在账户列表页隐藏该账户
+function migrateAccountHidden() {
+  const cols = db.prepare("PRAGMA table_info(account_meta)").all().map(c => c.name);
+  if (!cols.includes('hidden')) db.exec('ALTER TABLE account_meta ADD COLUMN hidden INTEGER DEFAULT 0');
+}
+migrateAccountHidden();
 
 // 离线同步幂等键：client_id 唯一（部分索引，NULL 不冲突）。
 // 客户端在离线/弱网时生成 client_id 随记录提交，重试同一条不会重复插入。

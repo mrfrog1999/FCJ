@@ -18,6 +18,10 @@
       <van-cell-group inset class="fg">
         <van-field v-model="form.display_name" label="名称" :placeholder="bareName" maxlength="16" clearable />
         <van-field v-model="form.note" label="备注" placeholder="备注（可选）" maxlength="20" clearable />
+        <van-cell center title="隐藏">
+          <template #label><span class="hide-tip">开启后该账户不在账户列表页显示</span></template>
+          <template #right-icon><van-switch v-model="form.hidden" size="24" /></template>
+        </van-cell>
       </van-cell-group>
 
       <div class="section-title">账户分类</div>
@@ -69,7 +73,7 @@ const bareName = account.replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/gu
 // 分类选项（五类）；新账户默认按名称推断
 const catOptions = CATEGORY_META
 const guessedCat = inferCategory({ account, kind: '' })
-const form = ref({ display_name: '', note: '', icon: 'wallet', color: '#7aa7c7', category: guessedCat })
+const form = ref({ display_name: '', note: '', icon: 'wallet', color: '#7aa7c7', category: guessedCat, hidden: false })
 
 const TYPE_RULES = [
   { re: /微信/, icon: 'wechat', bg: '#22c55e' },
@@ -89,7 +93,8 @@ async function save() {
       icon: form.value.icon,
       color: form.value.color,
       note: form.value.note,
-      category: form.value.category
+      category: form.value.category,
+      hidden: form.value.hidden ? 1 : 0
     })
     store.touch()
     showToast('保存成功')
@@ -100,11 +105,12 @@ async function save() {
 onMounted(async () => {
   if (!store.ready) await store.loadBase().catch(() => {})
   try {
-    const list = await api.accounts.list(store.currentBookId ? { book_id: store.currentBookId } : {})
+    const list = await api.accounts.list(store.currentBookId ? { book_id: store.currentBookId, include_hidden: 1 } : { include_hidden: 1 })
     const a = list.find(x => x.account === account)
     if (a) {
       form.value.display_name = a.display_name || ''
       form.value.note = a.note || ''
+      form.value.hidden = !!a.hidden
       form.value.category = a.category || inferCategory(a)
       if (a.icon) form.value.icon = a.icon
       if (a.color) form.value.color = a.color
@@ -135,6 +141,7 @@ onMounted(async () => {
 .acc-icon { width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; }
 .preview-name { font-size: 14px; color: #666; }
 .fg { margin-top: 4px; }
+.hide-tip { font-size: 12px; color: #999; }
 .section-title { font-size: 13px; color: #999; padding: 18px 16px 10px; }
 .cat-grid { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 16px; }
 .cat-chip { padding: 8px 16px; border-radius: 20px; background: #fff; color: #666; font-size: 13px; cursor: pointer; border: 1px solid #e5e5e5; }

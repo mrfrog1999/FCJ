@@ -10,19 +10,19 @@
         <div class="nav-left" @click="goBack">
           <van-icon name="arrow-left" />
         </div>
-        <div class="nav-title">流水</div>
+        <div class="nav-title">{{ isAccountDetail ? lockedAccount : '流水' }}</div>
         <div class="nav-right"></div>
       </div>
       <div class="hero-sum">
-        <div class="hero-label">{{ isAllYears && activeYear ? activeYear + ' 年结余' : '结余' }}</div>
+        <div class="hero-label">{{ isAccountDetail ? '净流入' : (isAllYears && activeYear ? activeYear + ' 年结余' : '结余') }}</div>
         <div class="hero-balance">
           <FlipNumber v-if="bannerReady" :value="fmt(bannerSummary.balance)" :step="0.05" :card="false" />
           <span v-else class="hero-ph hero-ph-lg"></span>
         </div>
         <div class="hero-sub">
-          <span>收入 <b class="income-txt"><FlipNumber v-if="bannerReady" :value="fmt(bannerSummary.income)" :step="0.035" :card="false" /><span v-else class="hero-ph hero-ph-sm"></span></b></span>
+          <span>{{ isAccountDetail ? '流入' : '收入' }} <b class="income-txt"><FlipNumber v-if="bannerReady" :value="fmt(bannerSummary.income)" :step="0.035" :card="false" /><span v-else class="hero-ph hero-ph-sm"></span></b></span>
           <i></i>
-          <span>支出 <b class="expense-txt"><FlipNumber v-if="bannerReady" :value="fmt(bannerSummary.expense)" :step="0.035" :card="false" /><span v-else class="hero-ph hero-ph-sm"></span></b></span>
+          <span>{{ isAccountDetail ? '流出' : '支出' }} <b class="expense-txt"><FlipNumber v-if="bannerReady" :value="fmt(bannerSummary.expense)" :step="0.035" :card="false" /><span v-else class="hero-ph hero-ph-sm"></span></b></span>
         </div>
       </div>
       <!-- 右下角筛选按钮 -->
@@ -214,7 +214,11 @@ let io = null
 const pageScroller = () => document.querySelector('#app')
 
 const catFilter = ref('all')
-const accountFilter = ref('all')
+// 账户详情模式：/account-detail 复用本页，用 query.account 预筛该账户的流水。
+// 该账户固定不可被筛选弹窗的「重置」清掉，banner 标题也据此显示账户名。
+const isAccountDetail = computed(() => route.name === 'account-detail')
+const lockedAccount = computed(() => isAccountDetail.value ? (route.query.account || '') : '')
+const accountFilter = ref(isAccountDetail.value ? (route.query.account || 'all') : 'all')
 const memberFilter = ref('all')
 const typeFilter = ref('all')
 
@@ -279,7 +283,13 @@ const filtered = computed(() => allRecords.value.filter(r => {
   if (!inRange(r)) return false
   const cat = r.category2 || r.category_name || ''
   if (catFilter.value !== 'all' && cat !== catFilter.value) return false
-  if (accountFilter.value !== 'all' && r.account !== accountFilter.value) return false
+  // 账户筛选：普通账户按 account 精确匹配；转账的 account 存的是 from_account，
+  // 账户详情模式下同时匹配 to_account，这样从转入方账户进去也能看到这笔转入。
+  if (accountFilter.value !== 'all') {
+    const hit = r.account === accountFilter.value ||
+      (isAccountDetail.value && r.type === 'transfer' && r.to_account === accountFilter.value)
+    if (!hit) return false
+  }
   const mid = String(r.member_id || r.user_id || '')
   if (memberFilter.value !== 'all' && mid !== String(memberFilter.value)) return false
   if (typeFilter.value !== 'all' && r.type !== typeFilter.value) return false
@@ -310,8 +320,34 @@ function yearInfo(y) {
   return { income, expense, balance: income - expense }
 }
 
-// banner 汇总：全部年份时按当前滚动到的 activeYear 计算那一年的结余/收入/支出
+// 账户详情专属口径：账户看的是资金「流入/流出」，和普通流水页的收入/支出不同，
+// 转账必须计入 —— 转入(to_account=该账户)=流入，转出(from_account=该账户)=流出。
+//   流入 = 收入 + 转入
+//   流出 = 支出 + 转出
+//   大数字(结余) = 流入 - 流出
+// 基于全部记录(allRecords)统计该账户所有年份数据，不受分类/成员等筛选影响。
+const accountFlowSummary = computed(() => {
+  const acc = lockedAccount.value
+  let inflow = 0, outflow = 0
+  allRecords.value.forEach(r => {
+    const amt = Number(r.amount) || 0
+    if (r.type === 'transfer') {
+      if (r.to_account === acc) inflow += amt
+      if (r.from_account === acc) outflow += amt
+      return
+    }
+    if (r.account !== acc) return
+    if (r.type === 'income') inflow += amt
+    else outflow += amt // 支出及其它均视为流出
+  })
+  return { income: inflow, expense: outflow, balance: inflow - outflow }
+})
+
+// banner 汇总：
+// - 账户详情模式：显示该账户所有数据的「流入/流出」总账，不随滚动年份切换。
+// - 普通流水页：全部年份时按当前滚动到的 activeYear 显示那一年；单一年份显示全部。
 const bannerSummary = computed(() => {
+  if (isAccountDetail.value) return accountFlowSummary.value
   if (!isAllYears.value || !activeYear.value) return summary.value
   const t = yearTotals.value[activeYear.value]
   if (t) return { income: t.income, expense: t.expense, balance: t.income - t.expense }

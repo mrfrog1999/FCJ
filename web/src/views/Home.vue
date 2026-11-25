@@ -253,6 +253,9 @@ onUnmounted(() => {
 /* 下拉刷新容器：覆盖首页可视区（tabbar 之上），让下拉手势可触发 */
 .home-pull {
   position: relative;
+  /* banner 高度统一管理：导航区 66px + 数据区，含安全区。
+     两处引用（下拉白底衬 / .hero）共用，避免改一处漏一处。 */
+  --hero-h: 258px;
   /* 铺满整个视口。原先扣了 58px（旧版底部 tabbar 的高度）+ 安全区：
      悬浮菜单改版后那 58px 早就没人占了，却把内容区硬生生截短 92px，
      卡片下面多出一截没来由的空白。菜单是浮层，内容区应该铺到屏幕底，
@@ -267,7 +270,7 @@ onUnmounted(() => {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
-  height: calc(226px + env(safe-area-inset-top));
+  height: calc(var(--hero-h) + env(safe-area-inset-top));
   background: #fff;
   pointer-events: none;
   z-index: 0;
@@ -287,10 +290,17 @@ onUnmounted(() => {
   box-sizing: border-box;
 }
 
-/* banner：橙红渐变只铺内容区，顶部状态栏安全区保持白色不上色。
-   .hero 自身底色仍是白色（顶部那段就是白），::before 从安全区下沿开始铺渐变。 */
-.hero { position: relative; flex: 0 0 calc(226px + env(safe-area-inset-top)); height: calc(226px + env(safe-area-inset-top)); overflow: hidden; padding-top: calc(env(safe-area-inset-top) + 10px); background: #fff; border-bottom: 1px solid #f0f0f0; }
-.hero::before { content: ''; position: absolute; z-index: 0; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 66px); bottom: 0; background: var(--primary-grad); }
+/* banner：背景图只铺内容区，顶部状态栏/导航栏保持白色不上图。
+   .hero 自身底色仍是白色（顶部那段就是白），::before 从安全区下沿+66px 开始铺背景图。
+   叠一层从左下往右上的深色蒙版，保证白色金额文字始终清晰。 */
+.hero { position: relative; flex: 0 0 calc(var(--hero-h) + env(safe-area-inset-top)); height: calc(var(--hero-h) + env(safe-area-inset-top)); overflow: hidden; padding-top: calc(env(safe-area-inset-top) + 10px); background: #fff; border-bottom: 1px solid #f0f0f0; }
+.hero::before {
+  content: ''; position: absolute; z-index: 0; left: 0; right: 0;
+  top: calc(env(safe-area-inset-top) + 66px); bottom: 0;
+  background:
+    linear-gradient(90deg, rgba(150,40,20,.34) 0%, rgba(150,40,20,.12) 42%, rgba(0,0,0,0) 78%),
+    url('/home-banner.jpg') center 38% / cover no-repeat;
+}
 /* 顶部导航标题：与其他页导航条对齐（安全区起 66px 区），水平垂直居中、深色字 */
 .home-nav-title { position: absolute; z-index: 3; left: 0; right: 0; top: env(safe-area-inset-top); height: 66px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; color: #1a1a1a; }
 .hero-content { position: absolute; z-index: 2; left: 22px; bottom: 32px; color: #fff; }

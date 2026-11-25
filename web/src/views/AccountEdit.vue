@@ -143,7 +143,7 @@ function openDetail(a) { router.push({ path: '/account-detail-edit', query: { ac
 onMounted(async () => {
   if (!store.ready) await store.loadBase().catch(() => {})
   try {
-    list.value = await api.accounts.list(store.currentBookId ? { book_id: store.currentBookId } : {})
+    list.value = await api.accounts.list(store.currentBookId ? { book_id: store.currentBookId, include_hidden: 1 } : { include_hidden: 1 })
   } catch (e) { list.value = [] }
   loaded.value = true
 })

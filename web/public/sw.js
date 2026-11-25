@@ -48,19 +48,37 @@ async function cacheFirst(req, cacheName) {
   return res;
 }
 
-async function networkFirstShell(req) {
+// App Shell：Stale-While-Revalidate（缓存优先 + 后台静默更新）。
+// 关键点：弱网下 fetch 往往「既不成功也不立即失败」，而是长时间 pending。
+// 原来 Network-First 会 await 这个 fetch，Shell 迟迟拿不到 → 黑屏半天，
+// 页面 JS 根本没执行，下面那套本地缓存自然也没机会跑。
+// 现在有缓存就「秒回」让页面立刻渲染（各页先读本地缓存显示数据），
+// 网络更新放到后台、不阻塞首屏；只有首次打开（无缓存）才等网络，且带 6s 超时兜底。
+async function networkFirstShell(req, event) {
   const cache = await caches.open(SHELL_CACHE);
+  // 后台更新：发起网络请求并写回缓存，交给 waitUntil 保活，失败静默
+  const network = fetch(req).then(res => {
+    if (res && res.ok) return cache.put(SHELL_KEY, res.clone());
+  }).catch(() => {});
+  if (event) event.waitUntil(network);
+
+  const cached = await cache.match(SHELL_KEY)
+    || await caches.match('/index.html')
+    || await caches.match('/');
+  if (cached) return cached;
+
+  // 首次打开无缓存：等网络（带超时兜底），再从缓存取回填结果
   try {
-    const res = await fetch(req);
-    if (res && res.ok) await cache.put(SHELL_KEY, res.clone());
-    return res;
-  } catch (e) {
-    const cached = await cache.match(SHELL_KEY)
-      || await caches.match('/index.html')
-      || await caches.match('/');
-    if (cached) return cached;
-    throw e;
-  }
+    await Promise.race([
+      network,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('shell timeout')), 6000))
+    ]);
+  } catch (e) { /* 弱网超时：走下方缓存兜底 */ }
+  const fresh = await cache.match(SHELL_KEY)
+    || await caches.match('/index.html')
+    || await caches.match('/');
+  if (fresh) return fresh;
+  throw new Error('no app shell available');
 }
 
 // 安装：预缓存 App Shell 与清单里的全部静态资源。
@@ -103,9 +121,9 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // 页面导航：网络优先，断网回退缓存的 index.html
+  // 页面导航：缓存优先秒开 + 后台静默更新（弱网不再黑屏）
   if (req.mode === 'navigate') {
-    e.respondWith(networkFirstShell(req));
+    e.respondWith(networkFirstShell(req, e));
     return;
   }
 

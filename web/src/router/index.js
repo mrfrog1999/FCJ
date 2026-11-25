@@ -31,7 +31,9 @@ const routes = [
   { path: '/books', name: 'books', component: () => import('../views/BookManage.vue') },
   { path: '/accounts', name: 'accounts', component: () => import('../views/AccountManage.vue') },
   { path: '/backup', name: 'backup', component: () => import('../views/Backup.vue') },
-  { path: '/account-detail', name: 'account-detail', component: () => import('../views/AccountDetail.vue') },
+  // 账户详情 = 流水页按账户预筛：直接复用 Detail.vue，用 query.account 初始化账户筛选。
+  // 形式/交互与流水页完全一致（结余 banner、年/月折叠、按日分组、编辑删除）。
+  { path: '/account-detail', name: 'account-detail', component: () => import('../views/Detail.vue') },
   { path: '/account-edit', name: 'account-edit', component: () => import('../views/AccountEdit.vue') },
   { path: '/account-detail-edit', name: 'account-detail-edit', component: () => import('../views/AccountDetailEdit.vue') }
 ]

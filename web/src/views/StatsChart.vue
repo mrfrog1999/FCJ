@@ -11,8 +11,9 @@
     </div>
 
     <!-- 实心饼图 / 条形图 -->
-    <div class="chart-stage">
-      <div v-show="!isEmpty" ref="chartRef" class="chart-canvas"></div>
+    <div class="chart-stage" :class="{ 'pie-enter': enterAnim, 'is-bar': viewMode === 'bar' }" :style="viewMode === 'bar' ? { minHeight: barHeight + 'px' } : {}">
+      <div v-show="!isEmpty" ref="chartRef" class="chart-canvas" :style="viewMode === 'bar' ? { height: barHeight + 'px' } : {}"></div>
+      <div v-if="!isEmpty && viewMode === 'bar'" class="bar-top-tag">TOP {{ barRows.length }}</div>
       <!-- 中心磨砂玻璃圆：白色半透明 + backdrop-filter 真模糊，覆盖在饼图中心 -->
       <div v-if="!isEmpty && viewMode === 'pie'" class="pie-center-glass">
         <span class="pcg-label">总计</span>
@@ -198,6 +199,14 @@ if (!defs[chartKey.value]) chartKey.value = 'expense_category'
 const def = computed(() => defs[chartKey.value])
 const range = ref('all')
 const viewMode = ref('pie')
+// 入场动画触发器：echarts 只负责一次性画好 canvas，
+// 淡入缩放交给 GPU 合成的 CSS 动画，避免逐帧重绘百万像素画布。
+const enterAnim = ref(false)
+function replayEnter() {
+  enterAnim.value = false
+  void document.body.offsetWidth // 强制回流，让动画能重新播放
+  enterAnim.value = true
+}
 const selectedName = ref('')
 const rows = ref([])
 const isEmpty = computed(() => !rows.value.length)
@@ -214,8 +223,20 @@ const pieRows = computed(() => {
 })
 const selected = computed(() => pieRows.value.find(r => r.name === selectedName.value) || null)
 
+// 条形图：完整分类全塞进固定高度会让每根条只有十几像素、数值标签叠成一团。
+// 这里只取 Top N（下方「排行」列表仍保留全部数据），并让画布高度随条数增长，
+// 每根条都有足够行高，标签不再重叠。
+const BAR_MAX = 10
+const barRows = computed(() => rows.value.slice(0, BAR_MAX))
+const barHeight = computed(() => Math.max(300, barRows.value.length * 34 + 46))
+
 const fmt = n => Number(n || 0).toFixed(2)
 const pctOf = v => total.value ? (v / total.value * 100).toFixed(2) : '0.00'
+// 条形末端标签用缩写，避免「¥886046.24」这种长串挤占绘图区
+const shortMoney = n => {
+  const v = Number(n || 0)
+  return v >= 10000 ? '¥' + (v / 10000).toFixed(1) + '万' : '¥' + Math.round(v)
+}
 const pieColor = i => PIE_COLORS[i % PIE_COLORS.length]
 // 选中项序号 / 颜色（供下方指针、胶囊、明细行与饼图联动）
 const selectedIdx = computed(() => selected.value ? pieRows.value.findIndex(r => r.name === selected.value.name) : 0)
@@ -489,23 +510,60 @@ function renderChart() {
   if (!chart || chart.getDom() !== chartRef.value) {
     if (chart) chart.dispose()
     chartKind = ''
-    chart = echarts.init(chartRef.value)
+    // DPR=2：真机 dpr=3 时画布 1248×1380（172万像素）逐帧重绘是卡顿源；
+    // 降到 2 直接省一半像素，图形清晰度肉眼几乎无差（文字是 DOM 不受影响）。
+    chart = echarts.init(chartRef.value, null, { devicePixelRatio: 2 })
   }
-  const data = rows.value
+  // viewMode 切换会改变 .chart-canvas 的高度（条形图动态高度 ↔ 饼图固定 460px）。
+  // 必须先让 echarts 按当前真实 DOM 尺寸重算内部画布，再 setOption；
+  // 否则切回饼图时内部画布沿用条形图高度，圆心会与中心磨砂圆/箭头错位（圆对不齐）。
+  chart.resize()
   if (viewMode.value === 'bar') {
     const kindChanged = chartKind !== 'bar'
     chartKind = 'bar'
+    const bar = barRows.value
+    // 与饼图同款渐变：左亮右略深，纯本色不混白，圆角收尾
+    const barColor = hex => {
+      const c = hex.replace('#', '')
+      const r = parseInt(c.slice(0, 2), 16), g = parseInt(c.slice(2, 4), 16), b = parseInt(c.slice(4, 6), 16)
+      const dark = v => Math.round(v * 0.88)
+      return new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+        { offset: 0, color: `rgb(${r},${g},${b})` },
+        { offset: 1, color: `rgb(${dark(r)},${dark(g)},${dark(b)})` }
+      ])
+    }
     chart.setOption({
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: p => `${p[0].name}<br/>¥${fmt(p[0].value)}` },
-      grid: { left: 6, right: 16, top: 12, bottom: 6, containLabel: true },
-      xAxis: { type: 'value', splitLine: { lineStyle: { color: '#f2f2f2' } }, axisLabel: { color: '#999', fontSize: 10, formatter: v => v >= 10000 ? (v / 10000).toFixed(0) + '万' : v } },
-      yAxis: { type: 'category', data: data.map(r => r.name).reverse(), axisLine: { lineStyle: { color: '#eee' } }, axisLabel: { color: '#666', fontSize: 11 } },
+      // 和饼图一致：canvas 一次性画完，入场交给 CSS 合成层，避免大画布逐帧重绘
+      animation: false,
+      tooltip: {
+        trigger: 'axis', axisPointer: { type: 'shadow' },
+        formatter: p => `${p[0].name}<br/>¥${fmt(p[0].value)}　${pctOf(p[0].value)}%`
+      },
+      // right 预留给条形末端标签；axis 从 0 起，杜绝截图里出现的负半轴
+      grid: { left: 6, right: 66, top: 8, bottom: 4, containLabel: true },
+      xAxis: {
+        type: 'value', min: 0,
+        // 轴上限抬高 30%，让最长的条形末端与右侧标签之间留出空隙，标签不被裁切。
+        // 直接算成确定数值（而非回调），避免不同 echarts 版本对回调返回值处理不一致。
+        max: Math.ceil((bar[0]?.total || 1) * 1.3),
+        splitLine: { lineStyle: { color: '#f1f2f4', type: 'dashed' } },
+        axisLabel: { color: '#aeb2ba', fontSize: 10, formatter: v => v >= 10000 ? (v / 10000).toFixed(0) + '万' : v }
+      },
+      yAxis: {
+        type: 'category', data: bar.map(r => r.name).reverse(),
+        axisLine: { show: false }, axisTick: { show: false },
+        axisLabel: { color: '#60656e', fontSize: 11, width: 76, overflow: 'truncate' }
+      },
       series: [{
-        type: 'bar', barWidth: '55%',
-        data: data.map((r, i) => ({ value: r.total, itemStyle: { color: PIE_COLORS[i % PIE_COLORS.length], borderRadius: [0, 5, 5, 0] } })).reverse(),
-        label: { show: true, position: 'right', fontSize: 10, color: '#999', formatter: p => '¥' + fmt(p.value) }
+        type: 'bar', barWidth: 14,
+        data: bar.map((r, i) => ({
+          value: r.total,
+          itemStyle: { color: barColor(pieColor(i)), borderRadius: [0, 7, 7, 0] }
+        })).reverse(),
+        label: { show: true, position: 'right', distance: 6, fontSize: 11, color: '#7d828b', formatter: p => shortMoney(p.value) }
       }]
     }, kindChanged)
+    if (kindChanged) nextTick(replayEnter)
     return
   }
 
@@ -514,7 +572,7 @@ function renderChart() {
   const pieData = pieRows.value
   const kindChanged = chartKind !== 'pie'
   chartKind = 'pie'
-  // 鲜亮线性渐变：先增强饱和度让颜色更纯，再提亮亮端、暗端保持本色不发灰
+  // 纯色渐变：不混入任何白色，每块扇区就是本色（亮端本色、暗端略深本色），没有白色浮层
   const flatColor = (hex) => {
     const c = hex.replace('#', '')
     let r = parseInt(c.slice(0, 2), 16), g = parseInt(c.slice(2, 4), 16), b = parseInt(c.slice(4, 6), 16)
@@ -522,33 +580,32 @@ function renderChart() {
     const gray = (r + g + b) / 3
     const sat = (v) => Math.max(0, Math.min(255, Math.round(gray + (v - gray) * 1.32)))
     r = sat(r); g = sat(g); b = sat(b)
-    const light = (v) => Math.min(255, Math.round(v + (255 - v) * 0.26))
+    const dark = (v) => Math.round(v * 0.92)
     return new echarts.graphic.LinearGradient(0, 0, 0.4, 1, [
-      { offset: 0, color: `rgb(${light(r)},${light(g)},${light(b)})` },
-      { offset: 1, color: `rgb(${r},${g},${b})` }
+      { offset: 0, color: `rgb(${r},${g},${b})` },
+      { offset: 1, color: `rgb(${dark(r)},${dark(g)},${dark(b)})` }
     ])
   }
   chart.setOption({
-    animation: true,
-    animationDuration: 360,
-    animationDurationUpdate: 240,
-    animationEasingUpdate: 'cubicOut',
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: 'rgba(255,255,255,.97)', borderColor: '#eee', borderWidth: 1,
-      padding: [9, 13], textStyle: { color: '#333', fontSize: 12 },
-      extraCssText: 'box-shadow:0 8px 28px rgba(0,0,0,.12);border-radius:12px;',
-      formatter: p => `<div style="font-weight:600;margin-bottom:3px">${p.name}</div>¥${fmt(p.value)} · ${pctOf(p.value)}%`
-    },
+    // 关闭 echarts 内部逐帧动画：expansion 逐扇区扫出 + 错峰会在 DPR 大画布上
+    // 每帧重绘百万像素，19 扇区实测每轮 1.4 万次绘制调用 → 越播越卡。
+    // 现在 canvas 一次性画完，入场淡入缩放改由 CSS 合成层动画完成（主线程零重绘）。
+    animation: false,
+    // 去掉触摸/悬停扇区时弹出的白色 tooltip 浮层
+    tooltip: { show: false },
     series: [{
       type: 'pie',
+      // 扇区完全不响应鼠标：不冒手型光标、不高亮、不选中——各分项不可点击。
+      // 旋转对指针是靠 .chart-canvas 容器上的原生 pointer 事件算角度实现的，
+      // 与 echarts 内部图形事件无关，silent 不会挡住旋转。
+      silent: true,
       radius: '86%', center: ['50%', '50%'], startAngle: baseAngleFor(pieData) + rotation,
       minAngle: pieData.length > 1 ? 2 : 0,
       avoidLabelOverlap: true, label: { show: false }, labelLine: { show: false },
       selectedMode: false,
       // 去掉白色描边：无间隙纯色拼接；去掉所有 shadowBlur（手机端最耗性能）
       itemStyle: { borderColor: 'transparent', borderWidth: 0, borderRadius: 0 },
-      // 点击分类不放大扇区
+      // 即便 silent 失效也不放大扇区（双保险）
       emphasis: { scale: false },
       data: pieData.map((r, i) => ({
         name: r.name, value: r.total,
@@ -556,6 +613,9 @@ function renderChart() {
       }))
     }]
   }, kindChanged)
+  // 仅首次进入 / 从条形图切回饼图时播放一次 CSS 入场动画；
+  // 同类型数据刷新（kindChanged=false）不重播，避免每次刷新都闪一下。
+  if (kindChanged) nextTick(replayEnter)
 }
 
 // 交互
@@ -617,13 +677,19 @@ watch(viewMode, () => {
   if (viewMode.value === 'pie') rotation = 0
   nextTick(renderChart)
 })
-watch([() => store.currentBookId], () => load())
+// 基础数据（账本列表）就绪前，loadBase 内部会自动 setBook 改变 currentBookId；
+// 这个初始化阶段的变化不应触发额外 load，否则会和 onMounted 的 load 各画一次饼图 → 闪 2 次。
+let baseReady = false
+watch([() => store.currentBookId], () => { if (baseReady) load() })
 function refreshIfNeeded() { load() }
 // 服务端数据变更（其它端增删改/本端补传）后重算统计
 function onRemotePull() { if (store.ready || store.currentBookId) load() }
 onMounted(async () => {
-  // 不 await：离线/弱网下 loadBase 卡在网络错误会挡住统计页用缓存渲染
-  if (!store.ready) store.loadBase().catch(() => {})
+  // 先等基础数据就绪（含自动选中默认账本），再只 load 一次，避免重复渲染闪屏
+  if (!store.ready) await store.loadBase().catch(() => {})
+  // 让 loadBase 期间排队的 currentBookId watch 先跑完（此时 baseReady 仍为 false，会被跳过）
+  await nextTick()
+  baseReady = true
   panelTab.value = def.value.tab
   loadOptions()
   load()
@@ -666,12 +732,23 @@ onUnmounted(() => {
 .chart-stage { position: relative; margin: 12px 12px 0; border-radius: 18px; background: transparent; min-height: 460px; box-shadow: none; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-direction: column; }
 .chart-canvas { width: 100%; height: 460px; touch-action: none; cursor: grab; }
 .chart-canvas:active { cursor: grabbing; }
+/* 条形图不参与转盘拖动：放行纵向滚动，否则整个页面会卡在图表区滑不动 */
+.chart-stage.is-bar .chart-canvas { touch-action: pan-y; cursor: default; }
+.chart-stage.is-bar .chart-canvas:active { cursor: default; }
+.bar-top-tag { position: absolute; right: 16px; top: 8px; z-index: 2; font-size: 10px; letter-spacing: .6px; color: #b6bbc3; }
+/* 入场动画：只动合成层（opacity + transform），canvas 已一次性画好，
+   全程由 GPU 合成、主线程零重绘，彻底消除逐扇区重绘造成的卡顿。
+   will-change 提示合成器提前建层；动画结束即回到常态，不影响旋转跟手。 */
+.chart-stage.pie-enter .chart-canvas { animation: pieEnter .62s cubic-bezier(.22,.61,.36,1) both; will-change: transform, opacity; }
+@keyframes pieEnter {
+  from { opacity: 0; transform: scale(.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
 :deep(.van-empty) { padding: 60px 0; }
 /* 中心磨砂玻璃圆：白色半透明 + backdrop-filter 真模糊；绝对定位覆盖在饼图正中 */
 .pie-center-glass { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 132px; height: 132px; border-radius: 50%; background: rgba(255,255,255,.55); -webkit-backdrop-filter: blur(10px) saturate(1.3); backdrop-filter: blur(10px) saturate(1.3); border: 1px solid rgba(255,255,255,.7); box-shadow: 0 4px 20px rgba(0,0,0,.08), inset 0 1px 1px rgba(255,255,255,.9); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; pointer-events: none; z-index: 5; }
 .pcg-label { font-size: 12px; color: rgba(255,255,255,.9); text-shadow: 0 1px 3px rgba(0,0,0,.18); }
 .pcg-amount { font-size: 19px; font-weight: 700; color: #fff; letter-spacing: .3px; text-shadow: 0 1px 4px rgba(0,0,0,.2); }
-
 /* 饼图下方选中分类详情（参考图样式） */
 .pie-detail { display: flex; flex-direction: column; align-items: center; margin-top: 2px; }
 /* 指向饼图的三角指针 */

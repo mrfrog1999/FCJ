@@ -123,7 +123,7 @@ function makeDiag() {
     const probeH = Math.min(Math.round(probe.getBoundingClientRect().height || 0), 34)
       const htmlB = document.documentElement.getBoundingClientRect()
       box.textContent =
-      `BUILD v-pie-rotary-12\n` +
+      `BUILD v-pie-gpu-enter-20\n` +
       `innerH ${window.innerHeight} docH ${document.documentElement.clientHeight} htmlH ${Math.round(htmlB.height)}\n` +
       `vvH ${vv ? Math.round(vv.height) : '-'} vvTop ${vv ? Math.round(vv.offsetTop) : '-'} vvB ${vv ? Math.round(vv.offsetTop + vv.height) : '-'}\n` +
       `sab ${probeH} bodyPos ${bs.position} bodyT ${Math.round(bd.top)} bodyB ${Math.round(bd.bottom)}\n` +
@@ -201,7 +201,7 @@ function reportDiag() {
       const rr = e => { if (!e) return null; const b = e.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), h: Math.round(b.height) } }
       const barRect = rr(el)
       const payload = {
-        build: 'v-pie-rotary-12',
+        build: 'v-pie-gpu-enter-20',
         ua: navigator.userAgent.slice(0, 180),
         mode: matchMedia('(display-mode: standalone)').matches ? 'standalone' : (navigator.standalone ? 'ios-standalone' : 'browser'),
         route: route.name,
@@ -216,7 +216,7 @@ function reportDiag() {
            账户页用 min-height:100vh 能通到底，说明 vh ≠ innerHeight(894)。 */
         vh: (() => { const d = document.createElement('div'); d.style.cssText = 'position:absolute;left:-9999px;top:0;width:0;height:100vh'; document.body.appendChild(d); const v = Math.round(d.getBoundingClientRect().height); d.remove(); return v })(),
         dvh: (() => { const d = document.createElement('div'); d.style.cssText = 'position:absolute;left:-9999px;top:0;width:0;height:100dvh'; document.body.appendChild(d); const v = Math.round(d.getBoundingClientRect().height); d.remove(); return v })(),
-        /* 决定性：html 实际绘制高度。v-pie-rotary-12 起 html=100vh(956) 铺满物理屏，
+        /* 决定性：html 实际绘制高度。v-pie-gpu-enter-20 起 html=100vh(956) 铺满物理屏，
            body 锁 innerHeight(894) 保住 tab 点击——两者必须同时成立。 */
         htmlH: Math.round(document.documentElement.getBoundingClientRect().height),
         htmlBg: getComputedStyle(document.documentElement).backgroundColor,

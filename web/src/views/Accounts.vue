@@ -10,16 +10,15 @@
         </div>
       </div>
       <div class="hero-sum">
-        <div class="hs-label">净资产</div>
-        <div class="hs-net">
-          <span v-if="bannerReady">{{ hidden ? '******' : fmt(totals.net) }}</span>
-          <span v-else class="hs-ph hs-ph-lg"></span>
-          <van-icon :name="hidden ? 'eye-off-o' : 'eye-o'" class="hs-eye" @click="hidden = !hidden" />
+        <div class="hero-label">净资产</div>
+        <div class="hero-balance">
+          <FlipNumber v-if="bannerReady" :value="fmt(totals.net)" :step="0.05" :card="false" />
+          <span v-else class="hero-ph hero-ph-lg"></span>
         </div>
-        <div class="hs-sub">
-          <span>资产 <b v-if="bannerReady">{{ hidden ? '******' : fmt(totals.asset) }}</b><span v-else class="hs-ph hs-ph-sm"></span></span>
+        <div class="hero-sub">
+          <span>资产 <b class="income-txt"><FlipNumber v-if="bannerReady" :value="fmt(totals.asset)" :step="0.035" :card="false" /><span v-else class="hero-ph hero-ph-sm"></span></b></span>
           <i></i>
-          <span>负债 <b v-if="bannerReady">{{ hidden ? '******' : fmt(totals.liability) }}</b><span v-else class="hs-ph hs-ph-sm"></span></span>
+          <span>负债 <b class="expense-txt"><FlipNumber v-if="bannerReady" :value="fmt(totals.liability)" :step="0.035" :card="false" /><span v-else class="hero-ph hero-ph-sm"></span></b></span>
         </div>
       </div>
     </div>
@@ -30,7 +29,7 @@
       <!-- 五类账户分组 -->
       <div class="group" v-for="g in groups" :key="g.key">
         <div class="group-head">
-          <span>{{ g.name }}</span><span class="gh-amount">{{ hidden ? '******' : fmt(g.sum) }}</span>
+          <span>{{ g.name }}</span><span class="gh-amount">{{ fmt(g.sum) }}</span>
         </div>
         <div class="rows">
           <div class="row" v-for="a in g.list" :key="a.account" @click="openDetail(a)">
@@ -41,7 +40,7 @@
               <div class="rname">{{ displayName(a) }}</div>
               <div class="rsub" v-if="subLabel(a)">{{ subLabel(a) }}</div>
             </div>
-            <div class="ramt">{{ hidden ? '******' : fmt(a.balance) }}</div>
+            <div class="ramt">{{ fmt(a.balance) }}</div>
             <van-icon name="arrow" class="rarrow" />
           </div>
         </div>
@@ -60,6 +59,7 @@ import { readCache, writeCache } from '../utils/cache'
 import { api } from '../api'
 import { afterNav } from '../utils/afterNav'
 import SmartIcon from '../components/SmartIcon.vue'
+import FlipNumber from '../components/FlipNumber.vue'
 import { categoryOf, CATEGORY_META } from '../utils/accountCategory'
 import { showToast } from 'vant'
 
@@ -72,7 +72,6 @@ const accounts = ref(cachedAcc || [])
 const loaded = ref(false)
 // 命中缓存立即放行秒显；无缓存则等网络到位再放行，避免先显示 0
 const bannerReady = ref(!!(cachedAcc && cachedAcc.length))
-const hidden = ref(false)
 
 // 顶部 banner 吸顶：PWA 全屏时整页滚动会让头部滚走，列表内容直接顶到状态栏底下，
 // 和时间/信号图标叠在一起。这里让 banner 吸附在顶部，滚过一屏后收起余额区、
@@ -89,12 +88,15 @@ function onPageScroll() {
 
 const fmt = n => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-// 显示名：优先用自定义 display_name，否则去掉 emoji 前缀
+// 显示名：优先用自定义 display_name，否则用原始账户名（保留开头的 emoji 前缀，用户靠它区分账户）
 function displayName(a) {
   if (a.display_name) return a.display_name
-  return String(a.account || '').replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/gu, '').trim() || a.account
+  return a.account || ''
 }
-function bareName(a) { return displayName(a) }
+// 裸名：仅用于图标/副标题的关键词匹配，去掉 emoji 前缀避免干扰匹配；不影响列表显示
+function bareName(a) {
+  return String(a.account || '').replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/gu, '').trim() || displayName(a)
+}
 
 // 五类账户分组（公共工具：用户自定义分类优先，否则按名称推断）
 function groupSum(list) { return list.reduce((s, a) => s + Number(a.balance || 0), 0) }
@@ -204,18 +206,19 @@ onUnmounted(() => pageScroller()?.removeEventListener('scroll', onPageScroll))
 .nav-left .van-icon { font-size: 20px; transition: transform .1s ease, opacity .1s ease; }
 .nav-right { justify-content: flex-end; gap: 18px; }
 .nav-title { font-size: 16px; font-weight: 600; margin-right: auto; }
-/* 导航下方的通栏橙红渐变 banner：全宽、无圆角，净资产/资产/负债白色文字 */
-.hero-sum { position: relative; z-index: 2; margin: 0; padding: 10px 20px 16px; border-radius: 0; background: var(--primary-grad); color: #fff; max-height: 150px; opacity: 1; overflow: hidden; transition: max-height .24s cubic-bezier(.22,.61,.36,1), opacity .16s ease, padding .24s ease; }
-.hero.compact .hero-sum { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; margin: 0; }
-.hs-label { font-size: 13px; opacity: .92; }
-.hs-net { display: flex; align-items: center; gap: 8px; font-size: 38px; font-weight: 600; letter-spacing: .5px; line-height: 1.15; margin: 2px 0 6px; }
-.hs-eye { font-size: 18px; opacity: .85; }
-.hs-sub { font-size: 12px; opacity: .95; display: flex; align-items: center; gap: 10px; }
-.hs-sub i { display: inline-block; width: 1px; height: 11px; background: rgba(255,255,255,.45); }
+/* 导航下方的通栏橙红渐变 banner：全宽、无圆角，净资产/资产/负债白色文字。
+   数据区结构与样式与流水页 Detail.vue 完全一致，保证两页 banner 高度逐像素统一。 */
+.hero-sum { position: relative; z-index: 2; margin: 0; padding: 10px 20px 16px; border-radius: 0; background: var(--primary-grad); color: #fff; }
+.hero-label { font-size: 13px; opacity: .92; }
+.hero-balance { font-size: 38px; font-weight: 600; letter-spacing: 0; line-height: 1.15; margin: 2px 0 6px; }
+.hero-sub { font-size: 12px; opacity: .98; display: flex; align-items: center; gap: 10px; }
+.hero-sub b { font-weight: 600; }
+.hero-sub i { display: inline-block; width: 1px; height: 11px; background: rgba(255,255,255,.45); margin: 0 2px; }
+.income-txt, .expense-txt { color: #fff; }
 /* 数据就绪前的占位：只占位置、完全透明不可见，避免先显示 0 造成跳变 */
-.hs-ph { display: inline-block; height: 1em; vertical-align: middle; background: transparent; }
-.hs-ph-lg { width: 5.6em; }
-.hs-ph-sm { width: 3.4em; }
+.hero-ph { display: inline-block; height: 1em; vertical-align: middle; background: transparent; }
+.hero-ph-lg { width: 5.6em; }
+.hero-ph-sm { width: 3.4em; }
 
 .page-loading { display: flex; justify-content: center; margin-top: 60px; }
 

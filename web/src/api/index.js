@@ -17,7 +17,9 @@ function withSharecode(url) {
 
 const request = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '',
-  timeout: 60000
+  // 弱网下 60s 超时会让接口长时间挂起、数据迟迟不刷新；降到 12s 尽快失败走本地缓存兜底。
+  // 备份导入 / 邮件发送等耗时接口在请求级单独设了 120s，不受这里影响。
+  timeout: 12000
 })
 
 request.interceptors.request.use(cfg => {

@@ -66,10 +66,10 @@ router.get('/', (req, res) => {
     e.adjustCount += 1;
   });
 
-  // 读取账户展示元数据（排序/显示名/图标/备注）
+  // 读取账户展示元数据（排序/显示名/图标/备注/隐藏）
   let metaMap = new Map();
   if (req.query.book_id) {
-    const mRows = db.prepare('SELECT account, display_name, icon, color, note, category, sort FROM account_meta WHERE book_id = ?').all(Number(req.query.book_id));
+    const mRows = db.prepare('SELECT account, display_name, icon, color, note, category, sort, hidden FROM account_meta WHERE book_id = ?').all(Number(req.query.book_id));
     mRows.forEach(m => metaMap.set(m.account, m));
   }
 
@@ -86,9 +86,10 @@ router.get('/', (req, res) => {
       color: m.color || null,
       note: m.note || '',
       category: m.category || null,
-      sort: m.sort == null ? null : m.sort
+      sort: m.sort == null ? null : m.sort,
+      hidden: m.hidden ? 1 : 0
     };
-  }).filter(e => e.count > 0);
+  }).filter(e => e.count > 0 && (req.query.include_hidden === '1' || !e.hidden));
 
   // 有自定义排序的按 sort 升序（排在前），未排序的按余额绝对值降序（排在后）
   list.sort((a, b) => {
@@ -126,11 +127,14 @@ router.post('/meta', (req, res) => {
   const color = req.body.color == null ? null : String(req.body.color).trim() || null;
   const note = req.body.note == null ? '' : String(req.body.note).trim();
   const category = req.body.category == null ? null : String(req.body.category).trim() || null;
-  db.prepare(`INSERT INTO account_meta (book_id, account, display_name, icon, color, note, category)
-    VALUES (?,?,?,?,?,?,?)
+  // 隐藏开关：兼容旧版客户端（未传 hidden 时保持原值，不误清除）
+  const hidden = req.body.hidden == null ? null : (Number(req.body.hidden) ? 1 : 0);
+  db.prepare(`INSERT INTO account_meta (book_id, account, display_name, icon, color, note, category, hidden)
+    VALUES (?,?,?,?,?,?,?,?)
     ON CONFLICT(book_id, account) DO UPDATE SET
-      display_name=excluded.display_name, icon=excluded.icon, color=excluded.color, note=excluded.note, category=excluded.category`)
-    .run(bookId, account, dName, icon, color, note, category);
+      display_name=excluded.display_name, icon=excluded.icon, color=excluded.color, note=excluded.note,
+      category=excluded.category, hidden=COALESCE(excluded.hidden, account_meta.hidden)`)
+    .run(bookId, account, dName, icon, color, note, category, hidden);
   res.json({ ok: true });
 });
 
